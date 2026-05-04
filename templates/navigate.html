@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navigate &ndash; {{ customer }}</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#1B4F8A">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/truckLogo.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/truckLogo.png') }}">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #111827;
+        }
+
+        /* ── Page layout ── */
+        .nav-page {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        /* ── Header ── */
+        .nav-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            background: #1B4F8A;
+            color: #fff;
+            padding: 14px 16px;
+            flex-shrink: 0;
+        }
+
+        .nav-back-btn {
+            background: rgba(255,255,255,0.15);
+            border: none;
+            color: #fff;
+            font-size: 22px;
+            line-height: 1;
+            padding: 7px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            flex-shrink: 0;
+            align-self: center;
+            text-decoration: none;
+            touch-action: manipulation;
+        }
+        .nav-back-btn:hover { background: rgba(255,255,255,0.28); }
+
+        .nav-info { flex: 1; min-width: 0; }
+
+        .nav-customer {
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .nav-address {
+            font-size: 14px;
+            opacity: 0.85;
+            line-height: 1.35;
+        }
+
+        .nav-contact-row {
+            display: flex;
+            gap: 10px;
+            font-size: 14px;
+            margin-top: 5px;
+            opacity: 0.9;
+        }
+
+        .nav-so-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 7px;
+        }
+
+        .nav-badge {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+            white-space: nowrap;
+        }
+
+        .nav-open-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            background: #2d7d46;
+            color: #fff;
+            border: none;
+            border-radius: 7px;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 700;
+            text-decoration: none;
+            white-space: nowrap;
+            flex-shrink: 0;
+            cursor: pointer;
+            align-self: center;
+            touch-action: manipulation;
+        }
+        .nav-open-btn:hover { background: #236138; }
+
+        /* ── Map ── */
+        .nav-map-wrap {
+            flex: 1;
+            min-height: 0;
+        }
+        .nav-map-wrap iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
+
+        /* ── Bottom action bar ── */
+        .nav-actions {
+            display: flex;
+            gap: 12px;
+            padding: 12px 16px;
+            background: #fff;
+            border-top: 1px solid #e5e7eb;
+            flex-shrink: 0;
+        }
+
+        .nav-action-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px;
+            font-size: 17px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+
+        .nav-action-btn-text {
+            background: #1B4F8A;
+            color: #fff;
+        }
+        .nav-action-btn-text:hover { background: #143d6b; }
+
+        .nav-action-btn-details {
+            background: #e5e7eb;
+            color: #111827;
+        }
+        .nav-action-btn-details:hover { background: #d1d5db; }
+
+        .nav-action-btn-undeliver {
+            background: #dc2626;
+            color: #fff;
+        }
+        .nav-action-btn-undeliver:hover { background: #b91c1c; }
+
+        /* ── Delivered detail view ── */
+        .delivered-detail-wrap {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .delivered-detail-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px 20px;
+        }
+        .delivered-detail-footer {
+            padding: 12px 16px;
+            border-top: 1px solid #e5e7eb;
+            background: #fff;
+            flex-shrink: 0;
+        }
+        .undeliver-btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 18px;
+            font-weight: 700;
+            background: #dc2626;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        .undeliver-btn:hover { background: #b91c1c; }
+        .undeliver-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ── Modals ── */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal-card {
+            background: #fff;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px 16px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1B4F8A;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #6b7280;
+            padding: 6px 10px;
+            border-radius: 6px;
+            line-height: 1;
+        }
+        .modal-close:hover { background: #e5e7eb; }
+
+        .modal-body {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .modal-contact { font-size: 16px; color: #6b7280; }
+        .modal-contact strong { color: #111827; }
+
+        .eta-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .eta-label { font-size: 15px; font-weight: 600; white-space: nowrap; }
+
+        .eta-controls { display: flex; align-items: center; gap: 6px; }
+
+        .eta-btn {
+            background: #e5e7eb;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            touch-action: manipulation;
+            min-width: 44px;
+        }
+        .eta-btn:hover { background: #d1d5db; }
+
+        .eta-input {
+            width: 72px;
+            text-align: center;
+            padding: 10px 8px;
+            font-size: 22px;
+            font-weight: 700;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            outline: none;
+        }
+        .eta-input:focus { border-color: #1B4F8A; }
+
+        .message-preview { background: #f9fafb; border-radius: 8px; padding: 16px; }
+        .message-preview label {
+            font-size: 12px; font-weight: 600; color: #6b7280;
+            text-transform: uppercase; letter-spacing: 0.06em;
+            margin-bottom: 8px; display: block;
+        }
+        .message-preview-input {
+            width: 100%; min-height: 88px; font-size: 15px; line-height: 1.55;
+            color: #111827; border: 2px solid #e5e7eb; border-radius: 8px;
+            padding: 10px 12px; resize: vertical; font-family: inherit; outline: none; margin-top: 6px;
+        }
+        .message-preview-input:focus { border-color: #1B4F8A; }
+
+        .send-status { font-size: 13px; text-align: center; min-height: 18px; }
+        .status-success { color: #2d7d46; }
+        .status-error { color: #dc2626; }
+
+        .modal-actions { display: flex; gap: 12px; }
+        .modal-actions .btn { flex: 1; padding: 16px; font-size: 17px; }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            gap: 8px; padding: 12px 20px; font-size: 16px; font-weight: 600;
+            border: none; border-radius: 8px; cursor: pointer; text-decoration: none;
+            transition: background 0.15s; touch-action: manipulation;
+        }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary { background: #1B4F8A; color: #fff; }
+        .btn-primary:hover:not(:disabled) { background: #143d6b; }
+        .btn-secondary { background: #e5e7eb; color: #111827; }
+        .btn-secondary:hover { background: #d1d5db; }
+        .btn-confirm-deliver {
+            background: #2d7d46; color: #fff; border: none; border-radius: 8px;
+            cursor: pointer; flex: 1; padding: 16px; font-size: 17px; font-weight: 600;
+        }
+        .btn-confirm-deliver:hover:not(:disabled) { background: #236138; }
+        .btn-confirm-deliver:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* deliver modal content */
+        .deliver-customer { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+        .deliver-address { font-size: 15px; color: #6b7280; line-height: 1.4; }
+        .deliver-contact { display: flex; gap: 12px; font-size: 15px; margin-top: 8px; margin-bottom: 8px; }
+        .contact-name { font-weight: 600; }
+        .contact-phone { color: #6b7280; }
+        .stop-notes {
+            font-size: 14px; background: #fef3c7; color: #b45309;
+            border-left: 3px solid #f59e0b; padding: 8px 12px;
+            border-radius: 4px; font-weight: 500; margin-top: 4px; white-space: pre-wrap;
+        }
+        .order-table-wrap { margin-top: 16px; }
+        .order-table-header {
+            font-size: 13px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.06em; color: #1B4F8A; background: #eff6ff;
+            padding: 6px 10px; border-radius: 6px 6px 0 0;
+            border: 1px solid #bfdbfe; border-bottom: none;
+        }
+        .order-lines-table {
+            width: 100%; border-collapse: collapse; font-size: 14px;
+            border: 1px solid #bfdbfe; border-radius: 0 0 6px 6px; overflow: hidden;
+        }
+        .order-lines-table thead th {
+            background: #f8fafc; padding: 7px 10px; text-align: left;
+            font-weight: 600; color: #6b7280; border-bottom: 1px solid #e5e7eb;
+        }
+        .order-lines-table tbody td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+        .order-lines-table tbody tr:last-child td { border-bottom: none; }
+        .order-lines-table tbody tr:nth-child(even) { background: #f9fafb; }
+        .order-lines-table td:first-child { white-space: nowrap; font-weight: 500; width: 28%; }
+        .qty-col { text-align: right; white-space: nowrap; width: 10%; color: #6b7280; }
+        .lines-loading { color: #6b7280; font-size: 14px; padding: 16px 0 4px; }
+        .lines-error { color: #dc2626; font-size: 14px; padding: 12px 0 4px; }
+        .lines-empty { color: #6b7280; font-style: italic; text-align: center; padding: 10px; }
+
+        /* ── Loading overlay ── */
+        #loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+        .loading-box {
+            background: #fff;
+            border-radius: 12px;
+            padding: 32px 40px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #1B4F8A;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-label {
+            margin-top: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #1B4F8A;
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+    <div class="loading-box">
+        <div class="loading-spinner"></div>
+        <div class="loading-label">Loading&hellip;</div>
+    </div>
+</div>
+
+<div class="nav-page">
+
+    <!-- Header -->
+    <div class="nav-header">
+        <a href="{{ back_url }}" class="nav-back-btn" onclick="showLoading(event, this.href)">&#8592;</a>
+        <div class="nav-info">
+            <div class="nav-customer">{{ customer }}</div>
+            {% if address_street %}<div class="nav-address">{{ address_street }}</div>{% endif %}
+            {% if address_city %}<div class="nav-address">{{ address_city }}</div>{% endif %}
+            {% if contact or phone %}
+            <div class="nav-contact-row">
+                {% if contact %}<span>{{ contact }}</span>{% endif %}
+                {% if phone %}<span>{{ phone }}</span>{% endif %}
+            </div>
+            {% endif %}
+            {% if so_list %}
+            <div class="nav-so-list">
+                {% for so in so_list %}<span class="nav-badge">SO# {{ so }}</span>{% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% if not delivered and maps_url and maps_url != '#' %}
+        <a href="{{ maps_url }}" target="_blank" rel="noopener" class="nav-open-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" style="flex-shrink:0">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#EA4335"/>
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 1.82.55 3.52 1.5 4.93L12 2z" fill="#FBBC04"/>
+                <path d="M12 2c3.87 0 7 3.13 7 7 0 1.82-.55 3.52-1.5 4.93L12 2z" fill="#34A853"/>
+                <circle cx="12" cy="9" r="2.8" fill="#fff"/>
+            </svg>
+            Open Maps
+        </a>
+        {% endif %}
+    </div>
+
+    {% if delivered %}
+    <!-- Delivered detail view — no map -->
+    <div class="delivered-detail-wrap">
+        <div class="delivered-detail-body" id="delivered-detail-body">
+            {% if address_street %}<div class="deliver-address">{{ address_street }}</div>{% endif %}
+            {% if address_city %}<div class="deliver-address">{{ address_city }}</div>{% endif %}
+            {% if contact or phone %}
+            <div class="deliver-contact">
+                {% if contact %}<span class="contact-name">{{ contact }}</span>{% endif %}
+                {% if phone %}<span class="contact-phone">{{ phone }}</span>{% endif %}
+            </div>
+            {% endif %}
+            {% if last_text_sent %}
+            <div style="font-size:13px; color:#6b7280; margin-bottom:8px;">Last text: {{ last_text_sent }}</div>
+            {% endif %}
+            {% if notes %}<div class="stop-notes">{{ notes }}</div>{% endif %}
+            <div id="order-lines-section"><p class="lines-loading">Loading order lines&hellip;</p></div>
+        </div>
+        <div class="delivered-detail-footer">
+            <div id="undeliver-status" class="send-status"></div>
+            <button class="undeliver-btn" id="undeliver-btn" onclick="unmarkDelivered()">
+                &#10005; Not Delivered
+            </button>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- Map -->
+    <div class="nav-map-wrap">
+        {% if display_address %}
+        <iframe
+            src="https://maps.google.com/maps?saddr=Current+Location&daddr={{ display_address | urlencode }}&output=embed"
+            allowfullscreen
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade">
+        </iframe>
+        {% endif %}
+    </div>
+
+    <!-- Bottom action bar -->
+    <div class="nav-actions">
+        {% if phone %}
+        <button class="nav-action-btn nav-action-btn-text" onclick="openSmsModal()">
+            &#128172; Text Customer
+        </button>
+        {% endif %}
+        <button class="nav-action-btn nav-action-btn-details" onclick="openDetailsModal()">
+            &#128203; Details
+        </button>
+    </div>
+    {% if phone %}
+    <div id="last-text-bar" style="padding:6px 16px 10px; font-size:13px; color:#6b7280; text-align:center; background:#fff; flex-shrink:0;{% if not last_text_sent %} display:none;{% endif %}">
+        Last text: <span id="last-text-time">{{ last_text_sent }}</span>
+    </div>
+    {% endif %}
+    {% endif %}
+
+</div>
+
+<!-- SMS Modal -->
+<div id="sms-overlay" class="modal-overlay" style="display:none;">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2>Text Customer</h2>
+            <button class="modal-close" onclick="closeSmsModal()">&#10005;</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-contact">
+                To: <strong>{{ contact or customer }}</strong> &mdash; <span>{{ phone }}</span><br>
+                <span id="modal-last-text" style="font-size:13px;{% if not last_text_sent %} display:none;{% endif %}">Last text: {{ last_text_sent }}</span>
+            </p>
+            <div class="eta-row">
+                <span class="eta-label">Minutes away:</span>
+                <div class="eta-controls">
+                    <button class="eta-btn" onclick="adjustEta(-5)">-5</button>
+                    <button class="eta-btn" onclick="adjustEta(-1)">-1</button>
+                    <input type="number" id="eta-minutes" value="15" min="1" max="120" class="eta-input">
+                    <button class="eta-btn" onclick="adjustEta(1)">+1</button>
+                    <button class="eta-btn" onclick="adjustEta(5)">+5</button>
+                </div>
+            </div>
+            <div class="message-preview">
+                <label>Message:</label>
+                <textarea id="message-preview-text" class="message-preview-input"></textarea>
+            </div>
+            <div id="sms-status" class="send-status"></div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeSmsModal()">Cancel</button>
+                <button class="btn btn-primary" id="send-btn" onclick="sendSms()">Send Text</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Details Modal -->
+<div id="details-overlay" class="modal-overlay" style="display:none;">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2>Order Details</h2>
+            <button class="modal-close" onclick="closeDetailsModal()">&#10005;</button>
+        </div>
+        <div class="modal-body">
+            <div id="details-content"></div>
+            <div id="details-status" class="send-status"></div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeDetailsModal()">Close</button>
+                {% if not delivered %}
+                <button class="btn btn-confirm-deliver" id="confirm-deliver-btn" onclick="confirmDelivery()">
+                    &#10003; Mark as Delivered
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function showLoading(e, href) {
+        e.preventDefault();
+        document.getElementById('loading-overlay').style.display = 'flex';
+        setTimeout(() => { location.href = href; }, 80);
+    }
+
+    const COMPANY        = {{ company | tojson }};
+    const CONTACT        = {{ (contact or customer) | tojson }};
+    const PHONE          = {{ phone | tojson }};
+    const SO_LIST        = {{ so_list | tojson }};
+    const DRIVER         = {{ driver | tojson }};
+    const DATE           = {{ date | tojson }};
+    const TRUCK          = {{ truck | tojson }};
+    const DELIVERY_ORDER = {{ delivery_order | tojson }};
+    const BACK_URL       = {{ back_url | tojson }};
+    const IS_DELIVERED   = {{ 'true' if delivered else 'false' }};
+
+    let lastTextSent = {{ last_text_sent | tojson }};
+
+    function updateLastTextDisplay(timeStr) {
+        lastTextSent = timeStr;
+        const bar = document.getElementById('last-text-bar');
+        const barTime = document.getElementById('last-text-time');
+        const modalEl = document.getElementById('modal-last-text');
+        if (bar && barTime) {
+            barTime.textContent = timeStr;
+            bar.style.display = '';
+        }
+        if (modalEl) {
+            modalEl.textContent = 'Last text: ' + timeStr;
+            modalEl.style.display = '';
+        }
+    }
+
+    // ── SMS Modal ──────────────────────────────────────────────
+
+    function openSmsModal() {
+        document.getElementById('sms-status').textContent = '';
+        document.getElementById('sms-status').className = 'send-status';
+        const sendBtn = document.getElementById('send-btn');
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send Text';
+        sendBtn.className = 'btn btn-primary';
+        const modalEl = document.getElementById('modal-last-text');
+        if (modalEl) {
+            if (lastTextSent) {
+                modalEl.textContent = 'Last text: ' + lastTextSent;
+                modalEl.style.display = '';
+            } else {
+                modalEl.style.display = 'none';
+            }
+        }
+        updateMessagePreview();
+        document.getElementById('sms-overlay').style.display = 'flex';
+    }
+
+    function closeSmsModal() {
+        document.getElementById('sms-overlay').style.display = 'none';
+    }
+
+    document.getElementById('sms-overlay').addEventListener('click', function (e) {
+        if (e.target === this) closeSmsModal();
+    });
+
+    function adjustEta(delta) {
+        const input = document.getElementById('eta-minutes');
+        input.value = Math.max(1, Math.min(120, (parseInt(input.value) || 15) + delta));
+        updateMessagePreview();
+    }
+
+    document.getElementById('eta-minutes').addEventListener('input', updateMessagePreview);
+
+    function updateMessagePreview() {
+        const minutes = parseInt(document.getElementById('eta-minutes').value) || 15;
+        const plural = minutes === 1 ? '' : 's';
+        document.getElementById('message-preview-text').value =
+            `Hi ${CONTACT}, this is ${COMPANY} – your driver is approximately ${minutes} minute${plural} away.`;
+    }
+
+    async function sendSms() {
+        const message = document.getElementById('message-preview-text').value.trim();
+        if (!message) return;
+        const sendBtn = document.getElementById('send-btn');
+        const statusEl = document.getElementById('sms-status');
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Sending…';
+        statusEl.textContent = '';
+        statusEl.className = 'send-status';
+        try {
+            const res = await fetch('/api/send-sms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: PHONE,
+                    message,
+                    delivery_date: DATE,
+                    driver: DRIVER,
+                    truck: TRUCK,
+                    delivery_order: DELIVERY_ORDER,
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                statusEl.className = 'send-status status-success';
+                statusEl.textContent = 'Text sent!';
+                sendBtn.textContent = '✓ Sent';
+                sendBtn.className = 'btn btn-secondary';
+                const timeStr = data.sent_at || (() => {
+                    const now = new Date();
+                    const h = now.getHours() % 12 || 12;
+                    const m = String(now.getMinutes()).padStart(2, '0');
+                    return `${h}:${m} ${now.getHours() < 12 ? 'AM' : 'PM'}`;
+                })();
+                updateLastTextDisplay(timeStr);
+                setTimeout(closeSmsModal, 1500);
+            } else {
+                statusEl.className = 'send-status status-error';
+                statusEl.textContent = data.error || 'Failed to send. Please try again.';
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send Text';
+            }
+        } catch {
+            statusEl.className = 'send-status status-error';
+            statusEl.textContent = 'Network error. Please try again.';
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send Text';
+        }
+    }
+
+    // ── Details Modal ──────────────────────────────────────────
+
+    function openDetailsModal() {
+        const customer  = {{ customer | tojson }};
+        const street    = {{ address_street | tojson }};
+        const city      = {{ address_city | tojson }};
+        const notes     = {{ notes | tojson }};
+
+        let html = `<div class="deliver-customer">${customer}</div>`;
+        if (street) html += `<div class="deliver-address">${street}</div>`;
+        if (city)   html += `<div class="deliver-address">${city}</div>`;
+        if (CONTACT || PHONE) {
+            html += `<div class="deliver-contact">`;
+            if (CONTACT) html += `<span class="contact-name">${CONTACT}</span>`;
+            if (PHONE)   html += `<span class="contact-phone">${PHONE}</span>`;
+            html += `</div>`;
+        }
+        if (notes) html += `<div class="stop-notes">${notes}</div>`;
+        html += `<div id="order-lines-section"><p class="lines-loading">Loading order lines&hellip;</p></div>`;
+
+        document.getElementById('details-content').innerHTML = html;
+        document.getElementById('details-status').textContent = '';
+        const confirmBtn = document.getElementById('confirm-deliver-btn');
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = '✓ Mark as Delivered';
+        document.getElementById('details-overlay').style.display = 'flex';
+
+        fetch(`/api/order-lines?so_nums=${SO_LIST.join(',')}`)
+            .then(r => r.json())
+            .then(data => {
+                const section = document.getElementById('order-lines-section');
+                if (!section) return;
+                if (data.error || !data.orders) {
+                    section.innerHTML = `<p class="lines-error">Could not load order lines.</p>`;
+                    return;
+                }
+                let tablesHtml = '';
+                SO_LIST.forEach(soNum => {
+                    const lines = data.orders[String(soNum)] || [];
+                    tablesHtml += `<div class="order-table-wrap">
+                        <div class="order-table-header">SO# ${soNum}</div>
+                        <table class="order-lines-table">
+                            <thead><tr><th>Part</th><th>Description</th><th class="qty-col">Qty</th></tr></thead>
+                            <tbody>`;
+                    if (lines.length) {
+                        lines.forEach(l => {
+                            tablesHtml += `<tr><td>${l.part}</td><td>${l.description}</td><td class="qty-col">${l.qty}</td></tr>`;
+                        });
+                    } else {
+                        tablesHtml += `<tr><td colspan="3" class="lines-empty">No lines found</td></tr>`;
+                    }
+                    tablesHtml += `</tbody></table></div>`;
+                });
+                section.innerHTML = tablesHtml;
+            })
+            .catch(() => {
+                const section = document.getElementById('order-lines-section');
+                if (section) section.innerHTML = `<p class="lines-error">Could not load order lines.</p>`;
+            });
+    }
+
+    function closeDetailsModal() {
+        document.getElementById('details-overlay').style.display = 'none';
+    }
+
+    document.getElementById('details-overlay').addEventListener('click', function (e) {
+        if (e.target === this) closeDetailsModal();
+    });
+
+    if (IS_DELIVERED) {
+        fetch(`/api/order-lines?so_nums=${SO_LIST.join(',')}`)
+            .then(r => r.json())
+            .then(data => {
+                const section = document.getElementById('order-lines-section');
+                if (!section) return;
+                if (data.error || !data.orders) {
+                    section.innerHTML = `<p class="lines-error">Could not load order lines.</p>`;
+                    return;
+                }
+                let tablesHtml = '';
+                SO_LIST.forEach(soNum => {
+                    const lines = data.orders[String(soNum)] || [];
+                    tablesHtml += `<div class="order-table-wrap">
+                        <div class="order-table-header">SO# ${soNum}</div>
+                        <table class="order-lines-table">
+                            <thead><tr><th>Part</th><th>Description</th><th class="qty-col">Qty</th></tr></thead>
+                            <tbody>`;
+                    if (lines.length) {
+                        lines.forEach(l => {
+                            tablesHtml += `<tr><td>${l.part}</td><td>${l.description}</td><td class="qty-col">${l.qty}</td></tr>`;
+                        });
+                    } else {
+                        tablesHtml += `<tr><td colspan="3" class="lines-empty">No lines found</td></tr>`;
+                    }
+                    tablesHtml += `</tbody></table></div>`;
+                });
+                section.innerHTML = tablesHtml;
+            })
+            .catch(() => {
+                const section = document.getElementById('order-lines-section');
+                if (section) section.innerHTML = `<p class="lines-error">Could not load order lines.</p>`;
+            });
+    }
+
+    async function unmarkDelivered() {
+        const btn = document.getElementById('undeliver-btn');
+        const statusEl = document.getElementById('undeliver-status');
+        btn.disabled = true;
+        btn.textContent = 'Removing…';
+        try {
+            const res = await fetch('/api/unmark-delivered', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: DATE, driver: DRIVER, truck: TRUCK, delivery_order: DELIVERY_ORDER
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.href = BACK_URL;
+            } else {
+                btn.disabled = false;
+                btn.textContent = '✕ Not Delivered';
+                statusEl.className = 'send-status status-error';
+                statusEl.textContent = 'Could not remove. Please try again.';
+            }
+        } catch {
+            btn.disabled = false;
+            btn.textContent = '✕ Not Delivered';
+            statusEl.className = 'send-status status-error';
+            statusEl.textContent = 'Network error. Please try again.';
+        }
+    }
+
+    async function confirmDelivery() {
+        const confirmBtn = document.getElementById('confirm-deliver-btn');
+        const statusEl = document.getElementById('details-status');
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Saving…';
+        try {
+            const res = await fetch('/api/mark-delivered', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: DATE,
+                    driver: DRIVER,
+                    truck: TRUCK,
+                    delivery_order: DELIVERY_ORDER,
+                    so_nums: SO_LIST
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.href = BACK_URL;
+            } else {
+                statusEl.className = 'send-status status-error';
+                statusEl.textContent = 'Could not save. Please try again.';
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = '✓ Mark as Delivered';
+            }
+        } catch {
+            statusEl.className = 'send-status status-error';
+            statusEl.textContent = 'Network error. Please try again.';
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = '✓ Mark as Delivered';
+        }
+    }
+</script>
+</body>
+</html>

@@ -6,7 +6,11 @@
       "Read(//c/Projects/**)",
       "PowerShell(New-Item -ItemType Directory -Path \"c:\\\\Projects\\\\DeliveryApp\\\\static\\\\images\" -Force)",
       "PowerShell(Move-Item \"c:\\\\Projects\\\\DeliveryApp\\\\static\\\\css\\\\usa_LOGO_Transparent.png\" \"c:\\\\Projects\\\\DeliveryApp\\\\static\\\\images\\\\usa_LOGO_Transparent.png\")",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Projects\\\\DeliveryApp\" -Recurse)",
+      "Bash(Select-Object -Property FullName)",
+      "Bash(ConvertTo-Csv -NoTypeInformation)",
+      "Bash(Write-Output)"
     ],
     "additionalDirectories": [
       "C:\\GitRepo"

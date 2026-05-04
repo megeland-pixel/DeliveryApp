@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS Notification Consent &ndash; Universal Spiral Air</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f0f2f5;
+            color: #111827;
+            min-height: 100vh;
+            padding: 40px 24px;
+        }
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 48px 40px;
+        }
+        .logo-wrap {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        h1 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #1B4F8A;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: #6b7280;
+            font-size: 0.95rem;
+            margin-bottom: 36px;
+        }
+        h2 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #1B4F8A;
+            margin: 28px 0 10px;
+        }
+        p, li {
+            font-size: 0.95rem;
+            line-height: 1.7;
+            color: #374151;
+        }
+        ul {
+            padding-left: 20px;
+            margin-top: 6px;
+        }
+        li { margin-bottom: 4px; }
+        .highlight {
+            background: #eff6ff;
+            border-left: 4px solid #1B4F8A;
+            padding: 14px 18px;
+            border-radius: 6px;
+            margin: 24px 0;
+        }
+        .highlight p { color: #1e3a5f; }
+        footer {
+            margin-top: 40px;
+            padding-top: 24px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 0.85rem;
+            color: #6b7280;
+        }
+        @media (max-width: 600px) {
+            .container { padding: 32px 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo-wrap">
+            <img src="{{ url_for('static', filename='images/usa_LOGO_Transparent.png') }}"
+                 alt="Universal Spiral Air" style="max-height:60px;" onerror="this.style.display='none'">
+        </div>
+
+        <h1>SMS Delivery Notification Consent</h1>
+        <p class="subtitle">Universal Spiral Air &mdash; Customer Text Message Program</p>
+
+        <h2>How We Use Text Messaging</h2>
+        <p>Universal Spiral Air sends one-time SMS notifications to customers who have provided a
+        phone number in connection with a delivery order. These messages notify you that your
+        driver is on the way and provide an estimated arrival time.</p>
+
+        <h2>How You Opt In</h2>
+        <p>You provide your consent to receive SMS notifications by supplying a phone number at
+        the time your order is placed or when arranging delivery with our team. No separate
+        sign-up is required. By providing your number, you agree to receive delivery status
+        messages from Universal Spiral Air.</p>
+
+        <h2>Message Types &amp; Frequency</h2>
+        <ul>
+            <li>Delivery ETA notifications (e.g., &ldquo;Your driver is approximately 15 minutes away&rdquo;)</li>
+            <li>One message per delivery, sent only on the day of your scheduled delivery</li>
+            <li>Messages are sent by our delivery driver directly</li>
+        </ul>
+
+        <div class="highlight">
+            <p><strong>Message and data rates may apply.</strong> Frequency varies based on your
+            delivery schedule. This program is for transactional delivery notifications only
+            &mdash; we do not send marketing messages.</p>
+        </div>
+
+        <h2>How to Opt Out</h2>
+        <p>Reply <strong>STOP</strong> to any message at any time to unsubscribe. You will
+        receive a confirmation and no further messages will be sent. You may also contact us
+        directly to remove your number.</p>
+
+        <h2>Help</h2>
+        <p>Reply <strong>HELP</strong> to any message for assistance, or contact us directly:</p>
+        <ul>
+            <li>Phone: <a href="tel:16164534700">(616) 453-4700</a></li>
+            <li>Website: <a href="https://www.universalspiralair.com">universalspiralair.com</a></li>
+        </ul>
+
+        <h2>Privacy</h2>
+        <p>Your phone number is used solely to send delivery notifications related to your order.
+        We do not share, sell, or rent your phone number to third parties. Message history is
+        retained only as long as necessary for operational purposes.</p>
+
+        <footer>
+            &copy; {{ year }} Universal Spiral Air. All rights reserved.<br>
+            This page serves as the opt-in consent disclosure for our SMS notification program
+            as required by the CTIA and carrier guidelines.
+        </footer>
+    </div>
+</body>
+</html>

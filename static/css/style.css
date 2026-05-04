@@ -452,6 +452,7 @@ body {
     display: flex;
     align-items: flex-start;
     gap: 16px;
+    transition: box-shadow 0.15s, background 0.15s, transform 0.1s;
 }
 
 .stop-card-next {
@@ -459,7 +460,18 @@ body {
 }
 
 .stop-card-delivered {
-    opacity: 0.5;
+    background: #f0fdf4;
+    border-left: 4px solid #2d7d46;
+    cursor: pointer;
+}
+.stop-card-delivered:hover {
+    background: #dcfce7;
+    box-shadow: 0 6px 20px rgba(45, 125, 70, 0.15);
+    transform: translateY(-2px);
+}
+.stop-card-delivered:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow);
 }
 
 .stop-number {
@@ -530,6 +542,7 @@ body {
 .badge-contact { background: #f3f4f6; color: #374151; }
 .badge-phone   { background: #f3f4f6; color: #374151; font-family: monospace; }
 .badge-called  { background: #d1fae5; color: #065f46; }
+.badge-texted  { background: #e0e7ff; color: #3730a3; }
 
 .stop-notes {
     font-size: 14px;
@@ -543,12 +556,39 @@ body {
     white-space: pre-wrap;
 }
 
-.stop-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+.stop-card-clickable {
+    cursor: pointer;
+}
+.stop-card-clickable:hover {
+    background: #eef4ff;
+    box-shadow: 0 6px 20px rgba(27, 79, 138, 0.15);
+    transform: translateY(-2px);
+}
+.stop-card-clickable:active {
+    background: #ddeaff;
+    transform: translateY(0);
+    box-shadow: var(--shadow);
+}
+
+.stop-delivered-badge {
+    background: #d1fae5;
+    color: #065f46;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
     flex-shrink: 0;
-    width: 120px;
+    white-space: nowrap;
+    align-self: center;
+}
+
+.stop-chevron {
+    font-size: 28px;
+    color: #d1d5db;
+    flex-shrink: 0;
+    align-self: center;
+    line-height: 1;
+    padding-left: 4px;
 }
 
 /* ── Empty / alert states ──────────────────────────────────── */
@@ -706,10 +746,23 @@ body {
     display: block;
 }
 
-.message-preview p {
+.message-preview-input {
+    width: 100%;
+    min-height: 88px;
     font-size: 15px;
     line-height: 1.55;
     color: var(--text);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    resize: vertical;
+    font-family: inherit;
+    outline: none;
+    margin-top: 6px;
+}
+
+.message-preview-input:focus {
+    border-color: var(--primary);
 }
 
 .send-status {
@@ -731,6 +784,65 @@ body {
     padding: 16px;
     font-size: 17px;
 }
+
+/* ── Loading spinner ───────────────────────────────────────── */
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #e5e7eb;
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Stop-to-stop drive time divider ──────────────────────── */
+
+.stop-drive-time {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 8px;
+}
+
+.stop-drive-time-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
+.stop-drive-time-text {
+    font-size: 13px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.stop-drive-time-shop .stop-drive-time-text {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.stop-drive-time-shop .stop-drive-time-line {
+    background: #bfdbfe;
+}
+
+.shop-map-link {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary);
+    text-decoration: none;
+    white-space: nowrap;
+    padding: 2px 8px;
+    border: 1px solid var(--primary);
+    border-radius: 4px;
+}
+
 
 /* ── Tablet-size tweaks (landscape) ────────────────────────── */
 

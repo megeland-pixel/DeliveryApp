@@ -4,9 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Delivery Schedule</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#1B4F8A">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Delivery">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/truckLogo.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/truckLogo.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="index-page">
+    <div id="loading-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:12px; padding:32px 40px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+            <div class="loading-spinner"></div>
+            <div style="margin-top:16px; font-size:16px; font-weight:600; color:#1B4F8A;">Loading schedule&hellip;</div>
+        </div>
+    </div>
+
     <div class="login-card">
         <div class="login-header">
             <img src="{{ url_for('static', filename='images/usa_LOGO_Transparent.png') }}" alt="Logo" class="site-logo">
@@ -40,7 +55,7 @@
             </div>
 
             <button type="submit" class="btn btn-primary btn-large" id="submit-btn" disabled>
-                Start Shift
+                Start Delivery
             </button>
         </form>
     </div>
@@ -71,7 +86,8 @@
                 truckGroup.style.display = 'none';
                 submitBtn.disabled = false;
             } else if (trucks.length > 1) {
-                truckSelect.innerHTML = '<option value="">-- Select Truck --</option>';
+                const defaultTruck = trucks.find(t => !t.all_delivered) || trucks[0];
+                truckSelect.innerHTML = '';
                 trucks.forEach(t => {
                     const opt = document.createElement('option');
                     opt.value = t.truck;
@@ -80,10 +96,12 @@
                         ? `Truck ${t.truck} (${stops} — All Delivered)`
                         : `Truck ${t.truck} (${stops})`;
                     if (t.all_delivered) opt.style.color = '#9ca3af';
+                    if (t.truck === defaultTruck.truck) opt.selected = true;
                     truckSelect.appendChild(opt);
                 });
                 truckSelect.disabled = false;
                 truckGroup.style.display = 'block';
+                submitBtn.disabled = false;
             } else {
                 resetTrucks();
             }
@@ -102,8 +120,24 @@
         });
 
         document.getElementById('main-form').addEventListener('submit', e => {
-            if (!driverSelect.value || !truckSelect.value) e.preventDefault();
+            e.preventDefault();
+            if (!driverSelect.value || !truckSelect.value) return;
+
+            document.getElementById('loading-overlay').style.display = 'flex';
+
+            // setTimeout is more reliable than rAF in installed PWA mode —
+            // it guarantees the overlay is painted before navigation starts.
+            setTimeout(() => {
+                const url = new URL('/schedule', location.origin);
+                url.searchParams.set('driver', driverSelect.value);
+                url.searchParams.set('truck', truckSelect.value);
+                location.href = url.toString();
+            }, 80);
         });
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js');
+        }
     </script>
 </body>
 </html>

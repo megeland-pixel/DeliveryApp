@@ -4,12 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ driver }} &ndash; Schedule</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#1B4F8A">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Delivery">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/truckLogo.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/truckLogo.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="schedule-page">
 
+    <div id="loading-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:12px; padding:32px 40px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+            <div class="loading-spinner"></div>
+            <div style="margin-top:16px; font-size:16px; font-weight:600; color:#1B4F8A;">Loading&hellip;</div>
+        </div>
+    </div>
+
     <header class="schedule-header">
-        <a href="{{ url_for('index') }}" class="back-btn">&#8592;</a>
+        <a href="{{ url_for('index') }}" class="back-btn" onclick="showLoading(event, this.href)">&#8592;</a>
         <img src="{{ url_for('static', filename='images/usa_LOGO_Transparent.png') }}" alt="Logo" class="header-logo">
         <div class="header-info">
             <span class="header-driver">{{ driver }} &mdash; Truck {{ truck }}</span>
@@ -35,7 +50,7 @@
         {% else %}
             {% set ns = namespace(next_found=false) %}
             {% for stop in stops %}
-            <div class="stop-card{% if not stop.delivered and not ns.next_found %} stop-card-next{% endif %}{% if stop.delivered %} stop-card-delivered{% endif %}"
+            <div class="stop-card{% if not stop.delivered and not ns.next_found %} stop-card-next{% endif %}{% if stop.delivered %} stop-card-delivered{% else %} stop-card-clickable{% endif %}"
                  data-driver="{{ driver }}"
                  data-date="{{ selected_date }}"
                  data-truck="{{ stop.truck }}"
@@ -47,6 +62,10 @@
                  data-contact="{{ stop.contact }}"
                  data-phone="{{ stop.phone }}"
                  data-notes="{{ stop.notes }}"
+                 data-display-address="{{ stop.display_address }}"
+                 data-maps-url="{{ stop.maps_url or '' }}"
+                 data-delivered="{{ '1' if stop.delivered else '' }}"
+                 onclick="goNavigate(this)"
                  {% if not stop.delivered and not ns.next_found %}data-next-address="{{ stop.display_address }}"{% endif %}>
             {% if not stop.delivered %}{% set ns.next_found = true %}{% endif %}
                 <div class="stop-number">
@@ -73,218 +92,26 @@
                         {% if stop.called %}
                         <span class="badge badge-called">Called: {{ stop.called }}</span>
                         {% endif %}
+                        {% if stop.last_text_sent %}
+                        <span class="badge badge-texted">Texted {{ stop.last_text_sent }}</span>
+                        {% endif %}
                     </div>
                     {% if stop.notes %}
                     <div class="stop-notes">{{ stop.notes }}</div>
                     {% endif %}
                 </div>
-                <div class="stop-actions">
-                    {% if stop.delivered %}
-                    <div class="btn btn-delivered-done">&#10003; Delivered</div>
-                    {% else %}
-                    {% if stop.maps_url %}
-                    <a href="{{ stop.maps_url }}" target="_blank" rel="noopener" class="btn btn-navigate">
-                        <span class="btn-icon">&#128506;</span>
-                        <span>Navigate</span>
-                    </a>
-                    {% endif %}
-                    {% if stop.phone %}
-                    <button class="btn btn-text"
-                            data-contact="{{ stop.contact or stop.customer }}"
-                            data-phone="{{ stop.phone }}"
-                            onclick="openSmsModal(this)">
-                        <span class="btn-icon">&#128172;</span>
-                        <span>Text</span>
-                    </button>
-                    {% endif %}
-                    <button class="btn btn-deliver" onclick="openDeliverModal(this)">
-                        Details
-                    </button>
-                    {% endif %}
-                </div>
+                {% if stop.delivered %}
+                <div class="stop-delivered-badge">&#10003; Delivered</div>
+                {% else %}
+                <div class="stop-chevron">&#8250;</div>
+                {% endif %}
             </div>
             {% endfor %}
         {% endif %}
     </main>
 
-    <!-- SMS Modal -->
-    <div id="sms-overlay" class="modal-overlay" style="display:none;">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h2>Text Customer</h2>
-                <button class="modal-close" onclick="closeSmsModal()">&#10005;</button>
-            </div>
-            <div class="modal-body">
-                <p class="modal-contact">
-                    To: <strong id="modal-contact-name"></strong>
-                    &mdash; <span id="modal-phone"></span>
-                </p>
-
-                <div class="eta-row">
-                    <span class="eta-label">Minutes away:</span>
-                    <div class="eta-controls">
-                        <button class="eta-btn" onclick="adjustEta(-5)">-5</button>
-                        <button class="eta-btn" onclick="adjustEta(-1)">-1</button>
-                        <input type="number" id="eta-minutes" value="15" min="1" max="120" class="eta-input">
-                        <button class="eta-btn" onclick="adjustEta(1)">+1</button>
-                        <button class="eta-btn" onclick="adjustEta(5)">+5</button>
-                    </div>
-                </div>
-
-                <div class="message-preview">
-                    <label>Message preview:</label>
-                    <p id="message-preview-text"></p>
-                </div>
-
-                <div id="send-status" class="send-status"></div>
-
-                <div class="modal-actions">
-                    <button class="btn btn-secondary" onclick="closeSmsModal()">Cancel</button>
-                    <button class="btn btn-primary" id="send-btn" onclick="sendSms()">Send Text</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Delivery Confirmation Modal -->
-    <div id="deliver-overlay" class="modal-overlay" style="display:none;">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h2>Order Details</h2>
-                <button class="modal-close" onclick="closeDeliverModal()">&#10005;</button>
-            </div>
-            <div class="modal-body">
-                <div id="deliver-detail"></div>
-                <div id="deliver-status" class="send-status"></div>
-                <div class="modal-actions">
-                    <button class="btn btn-secondary" onclick="closeDeliverModal()">Close</button>
-                    <button class="btn btn-confirm-deliver" id="confirm-deliver-btn" onclick="confirmDelivery()">
-                        &#10003; Mark as Delivered
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <script>
-        const COMPANY = {{ company | tojson }};
-        let currentPhone = '';
-        let currentContact = '';
-        let currentDeliverCard = null;
-
-        // ── Delivery confirmation ──────────────────────────────
-
-        function openDeliverModal(btn) {
-            currentDeliverCard = btn.closest('.stop-card');
-            const d = currentDeliverCard.dataset;
-            const soList = JSON.parse(d.soList || '[]');
-
-            // Render header info immediately, placeholder for order lines
-            let html = `<div class="deliver-customer">${d.customer}</div>`;
-            if (d.addressStreet) html += `<div class="deliver-address">${d.addressStreet}</div>`;
-            if (d.addressCity)   html += `<div class="deliver-address">${d.addressCity}</div>`;
-            if (d.contact || d.phone) {
-                html += `<div class="deliver-contact">`;
-                if (d.contact) html += `<span class="contact-name">${d.contact}</span>`;
-                if (d.phone)   html += `<span class="contact-phone">${d.phone}</span>`;
-                html += `</div>`;
-            }
-            if (d.notes) html += `<div class="stop-notes deliver-notes">${d.notes}</div>`;
-            html += `<div id="order-lines-section"><p class="lines-loading">Loading order lines&hellip;</p></div>`;
-
-            document.getElementById('deliver-detail').innerHTML = html;
-            document.getElementById('deliver-status').textContent = '';
-            const confirmBtn = document.getElementById('confirm-deliver-btn');
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = '✓ Mark as Delivered';
-            document.getElementById('deliver-overlay').style.display = 'flex';
-
-            // Fetch and render order line tables
-            fetch(`/api/order-lines?so_nums=${soList.join(',')}`)
-                .then(r => r.json())
-                .then(data => {
-                    const section = document.getElementById('order-lines-section');
-                    if (!section) return;
-                    if (data.error || !data.orders) {
-                        section.innerHTML = `<p class="lines-error">Could not load order lines.</p>`;
-                        return;
-                    }
-                    let tablesHtml = '';
-                    soList.forEach(soNum => {
-                        const lines = data.orders[String(soNum)] || [];
-                        tablesHtml += `<div class="order-table-wrap">
-                            <div class="order-table-header">SO# ${soNum}</div>
-                            <table class="order-lines-table">
-                                <thead><tr><th>Part</th><th>Description</th><th class="qty-col">Qty</th></tr></thead>
-                                <tbody>`;
-                        if (lines.length) {
-                            lines.forEach(l => {
-                                tablesHtml += `<tr><td>${l.part}</td><td>${l.description}</td><td class="qty-col">${l.qty}</td></tr>`;
-                            });
-                        } else {
-                            tablesHtml += `<tr><td colspan="2" class="lines-empty">No lines found</td></tr>`;
-                        }
-                        tablesHtml += `</tbody></table></div>`;
-                    });
-                    section.innerHTML = tablesHtml;
-                })
-                .catch(() => {
-                    const section = document.getElementById('order-lines-section');
-                    if (section) section.innerHTML = `<p class="lines-error">Could not load order lines.</p>`;
-                });
-        }
-
-        function closeDeliverModal() {
-            document.getElementById('deliver-overlay').style.display = 'none';
-            currentDeliverCard = null;
-        }
-
-        document.getElementById('deliver-overlay').addEventListener('click', function (e) {
-            if (e.target === this) closeDeliverModal();
-        });
-
-        async function confirmDelivery() {
-            if (!currentDeliverCard) return;
-            const d = currentDeliverCard.dataset;
-            const confirmBtn = document.getElementById('confirm-deliver-btn');
-            const statusEl = document.getElementById('deliver-status');
-
-            confirmBtn.disabled = true;
-            confirmBtn.textContent = 'Saving…';
-
-            try {
-                const res = await fetch('/api/mark-delivered', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        date: d.date,
-                        driver: d.driver,
-                        truck: d.truck,
-                        delivery_order: d.deliveryOrder,
-                        so_nums: JSON.parse(d.soList || '[]')
-                    })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    // Update card in place
-                    currentDeliverCard.classList.remove('stop-card-next');
-                    currentDeliverCard.classList.add('stop-card-delivered');
-                    const actions = currentDeliverCard.querySelector('.stop-actions');
-                    actions.innerHTML = '<div class="btn btn-delivered-done">✓ Delivered</div>';
-                    closeDeliverModal();
-                } else {
-                    statusEl.className = 'send-status status-error';
-                    statusEl.textContent = 'Could not save. Please try again.';
-                    confirmBtn.disabled = false;
-                    confirmBtn.textContent = '✓ Mark Delivered';
-                }
-            } catch {
-                statusEl.className = 'send-status status-error';
-                statusEl.textContent = 'Network error. Please try again.';
-                confirmBtn.disabled = false;
-                confirmBtn.textContent = '✓ Mark Delivered';
-            }
-        }
         let driverCoords = null;
         let lastEtaFetch = 0;
 
@@ -318,6 +145,10 @@
             }
         }
 
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js');
+        }
+
         if (navigator.geolocation && nextStopCard) {
             navigator.geolocation.watchPosition(
                 pos => {
@@ -337,59 +168,106 @@
             etaBannerTime.textContent = 'GPS not supported';
         }
 
-        // ── SMS Modal ──────────────────────────────────────────
+        // ── Navigate page ──────────────────────────────────────
 
-        function openSmsModal(btn) {
-            currentPhone = btn.dataset.phone;
-            currentContact = btn.dataset.contact;
-            document.getElementById('modal-contact-name').textContent = currentContact;
-            document.getElementById('modal-phone').textContent = currentPhone;
-
-            // Pre-fill minutes from ETA banner if available
-            const bannerText = etaBannerTime ? etaBannerTime.textContent : '';
-            const bannerMatch = bannerText.match(/\d+/);
-            document.getElementById('eta-minutes').value = bannerMatch ? bannerMatch[0] : 15;
-
-            document.getElementById('send-status').textContent = '';
-            document.getElementById('send-status').className = 'send-status';
-            const sendBtn = document.getElementById('send-btn');
-            sendBtn.disabled = false;
-            sendBtn.textContent = 'Send Text';
-            sendBtn.className = 'btn btn-primary';
-            updateMessagePreview();
-            document.getElementById('sms-overlay').style.display = 'flex';
+        function showLoading(e, href) {
+            e.preventDefault();
+            document.getElementById('loading-overlay').style.display = 'flex';
+            setTimeout(() => { location.href = href; }, 80);
         }
 
-        function closeSmsModal() {
-            document.getElementById('sms-overlay').style.display = 'none';
+        function goNavigate(card) {
+            document.getElementById('loading-overlay').style.display = 'flex';
+            const d = card.dataset;
+            const params = new URLSearchParams({
+                customer:       d.customer || '',
+                street:         d.addressStreet || '',
+                city:           d.addressCity || '',
+                contact:        d.contact || '',
+                phone:          d.phone || '',
+                notes:          d.notes || '',
+                so_list:        d.soList || '[]',
+                maps_url:       d.mapsUrl || '',
+                address:        d.displayAddress || '',
+                driver:         d.driver || '',
+                date:           d.date || '',
+                truck:          d.truck || '',
+                delivery_order: d.deliveryOrder || '',
+                delivered:      d.delivered || '',
+                back:           window.location.href,
+            });
+            setTimeout(() => {
+                location.href = '/navigate?' + params.toString();
+            }, 80);
         }
 
-        document.getElementById('sms-overlay').addEventListener('click', function (e) {
-            if (e.target === this) closeSmsModal();
-        });
+        // ── Stop-to-stop drive times ───────────────────────────
 
-        function adjustEta(delta) {
-            const input = document.getElementById('eta-minutes');
-            input.value = Math.max(1, Math.min(120, (parseInt(input.value) || 15) + delta));
-            updateMessagePreview();
+        async function loadDriveTimes() {
+            const SHOP_ADDRESS = '2735 W River Dr NW, Grand Rapids, MI 49544';
+            const cards = Array.from(document.querySelectorAll('.stop-card:not(.stop-card-delivered)'));
+            if (cards.length < 1) return;
+
+            const pairs = [];
+
+            for (let i = 1; i < cards.length; i++) {
+                const divider = document.createElement('div');
+                divider.className = 'stop-drive-time';
+                divider.innerHTML =
+                    '<span class="stop-drive-time-line"></span>' +
+                    '<span class="stop-drive-time-text">calculating…</span>' +
+                    '<span class="stop-drive-time-line"></span>';
+                cards[i].parentNode.insertBefore(divider, cards[i]);
+                pairs.push({ divider, originCard: cards[i - 1], destCard: cards[i] });
+            }
+
+            // Back-to-shop time after the last undelivered stop
+            const lastCard = cards[cards.length - 1];
+            const shopOrigin = lastCard.dataset.displayAddress || '';
+            const shopMapsUrl = shopOrigin
+                ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(shopOrigin)}&destination=${encodeURIComponent(SHOP_ADDRESS)}`
+                : '';
+            const shopDivider = document.createElement('div');
+            shopDivider.className = 'stop-drive-time stop-drive-time-shop';
+            shopDivider.innerHTML =
+                '<span class="stop-drive-time-line"></span>' +
+                '<span class="stop-drive-time-text">calculating…</span>' +
+                (shopMapsUrl ? `<a class="shop-map-link" href="${shopMapsUrl}" target="_blank" rel="noopener">Directions</a>` : '') +
+                '<span class="stop-drive-time-line"></span>';
+            lastCard.parentNode.insertBefore(shopDivider, lastCard.nextSibling);
+            pairs.push({ divider: shopDivider, originCard: lastCard, destAddress: SHOP_ADDRESS });
+
+            for (const { divider, originCard, destCard, destAddress } of pairs) {
+                const origin = originCard.dataset.displayAddress;
+                const dest = destAddress || destCard.dataset.displayAddress;
+                const textEl = divider.querySelector('.stop-drive-time-text');
+
+                if (!origin || !dest) {
+                    divider.style.display = 'none';
+                    continue;
+                }
+
+                try {
+                    const params = new URLSearchParams({ origin, dest });
+                    const res = await fetch(`/api/stop-to-stop?${params}`);
+                    const data = await res.json();
+                    if (data.minutes !== undefined) {
+                        const m = data.minutes;
+                        textEl.textContent = destAddress
+                            ? (m < 1 ? '< 1 min back to shop' : `~${m} min back to shop`)
+                            : (m < 1 ? '< 1 min drive' : `~${m} min drive`);
+                    } else {
+                        divider.style.display = 'none';
+                    }
+                } catch {
+                    divider.style.display = 'none';
+                }
+
+                await new Promise(r => setTimeout(r, 350));
+            }
         }
 
-        document.getElementById('eta-minutes').addEventListener('input', updateMessagePreview);
-
-        function updateMessagePreview() {
-            const minutes = parseInt(document.getElementById('eta-minutes').value) || 15;
-            const plural = minutes === 1 ? '' : 's';
-            document.getElementById('message-preview-text').textContent =
-                `Hi ${currentContact}, this is ${COMPANY} – your driver is approximately ${minutes} minute${plural} away!`;
-        }
-
-        function sendSms() {
-            const message = document.getElementById('message-preview-text').textContent;
-            // Strip non-digits from phone number for the sms: URL
-            const phone = currentPhone.replace(/\D/g, '');
-            window.location.href = `sms:${phone}?body=${encodeURIComponent(message)}`;
-            closeSmsModal();
-        }
+        document.addEventListener('DOMContentLoaded', loadDriveTimes);
     </script>
 </body>
 </html>

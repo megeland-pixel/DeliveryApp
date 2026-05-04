@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
 import pyodbc
 from datetime import date, datetime
 import urllib.parse
@@ -14,6 +14,7 @@ import config
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 logging.basicConfig(level=logging.INFO)
 
 DELIVERY_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'deliveries.db')
@@ -33,6 +34,55 @@ def init_db():
                 UNIQUE(delivery_date, driver, truck, delivery_order)
             )
         ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS sms_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                delivery_date TEXT NOT NULL,
+                driver TEXT NOT NULL,
+                truck TEXT NOT NULL,
+                delivery_order TEXT NOT NULL,
+                sent_at TEXT NOT NULL
+            )
+        ''')
+
+
+def format_time(iso_str):
+    if not iso_str:
+        return ''
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        hour = dt.hour % 12 or 12
+        return f"{hour}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'}"
+    except Exception:
+        return ''
+
+
+def get_last_texts_for_driver(delivery_date, driver):
+    try:
+        with sqlite3.connect(DELIVERY_DB) as conn:
+            rows = conn.execute(
+                '''SELECT truck, delivery_order, MAX(sent_at)
+                   FROM sms_logs
+                   WHERE delivery_date=? AND driver=?
+                   GROUP BY truck, delivery_order''',
+                (delivery_date, driver)
+            ).fetchall()
+        return {(row[0], row[1]): format_time(row[2]) for row in rows}
+    except Exception:
+        return {}
+
+
+def get_last_text(delivery_date, driver, truck, delivery_order):
+    try:
+        with sqlite3.connect(DELIVERY_DB) as conn:
+            row = conn.execute(
+                '''SELECT MAX(sent_at) FROM sms_logs
+                   WHERE delivery_date=? AND driver=? AND truck=? AND delivery_order=?''',
+                (delivery_date, driver, truck, delivery_order)
+            ).fetchone()
+        return format_time(row[0]) if row and row[0] else ''
+    except Exception:
+        return ''
 
 
 def get_delivered_keys(delivery_date, driver):
@@ -202,6 +252,17 @@ def group_stops_by_order(stops):
     return result
 
 
+@app.route('/sms-consent')
+def sms_consent():
+    return render_template('sms_consent.html', year=date.today().year)
+
+
+@app.route('/sw.js')
+def service_worker():
+    return send_from_directory(app.static_folder, 'sw.js',
+                               mimetype='application/javascript')
+
+
 @app.route('/')
 def index():
     selected_date = date.today().isoformat()
@@ -296,8 +357,10 @@ def schedule():
         driver_stops = [s for s in all_stops if s.get('driver') == driver and s.get('truck') == truck]
         stops = group_stops_by_order(driver_stops)
         delivered_keys = get_delivered_keys(selected_date, driver)
+        last_texts = get_last_texts_for_driver(selected_date, driver)
         for stop in stops:
             stop['delivered'] = (stop['truck'], stop['delivery_order']) in delivered_keys
+            stop['last_text_sent'] = last_texts.get((stop['truck'], stop['delivery_order']), '')
         # Delivered stops go to the bottom
         stops.sort(key=lambda s: s['delivered'])
         error = None
@@ -320,18 +383,75 @@ _geocode_cache = {}
 def geocode_address(address):
     if address in _geocode_cache:
         return _geocode_cache[address]
+
+    # Build structured query from "street, city, state, zip" format for better accuracy
+    parts = [p.strip() for p in address.split(',')]
+    base = {'format': 'json', 'limit': 1, 'countrycodes': 'us'}
+    if len(parts) >= 4:
+        street, city, state, zipcode = parts[0], parts[1], parts[2], parts[3]
+        # Only use street if it has a house number — a bare street name (no leading digit)
+        # can match a same-named place in a different state and produce a wrong result.
+        if street and street[0].isdigit():
+            params = {**base, 'street': street, 'city': city, 'state': state, 'postalcode': zipcode}
+        else:
+            params = {**base, 'city': city, 'state': state, 'postalcode': zipcode}
+    elif len(parts) == 3:
+        params = {**base, 'city': parts[0], 'state': parts[1], 'postalcode': parts[2]}
+    else:
+        params = {**base, 'q': address}
+
     resp = requests.get(
         'https://nominatim.openstreetmap.org/search',
-        params={'q': address, 'format': 'json', 'limit': 1},
+        params=params,
         headers={'User-Agent': 'UniversalSpiralAirDeliveryApp/1.0'},
         timeout=5
     )
     results = resp.json()
+
+    # Fall back to city+zip if the street-level search returns nothing
+    if not results and 'street' in params:
+        fallback = {**base, 'city': params['city'], 'state': params['state'], 'postalcode': params['postalcode']}
+        resp = requests.get(
+            'https://nominatim.openstreetmap.org/search',
+            params=fallback,
+            headers={'User-Agent': 'UniversalSpiralAirDeliveryApp/1.0'},
+            timeout=5
+        )
+        results = resp.json()
+
     if not results:
         return None
     coords = (float(results[0]['lat']), float(results[0]['lon']))
     _geocode_cache[address] = coords
     return coords
+
+
+@app.route('/api/stop-to-stop')
+def stop_to_stop():
+    origin = request.args.get('origin', '').strip()
+    dest = request.args.get('dest', '').strip()
+    if not origin or not dest:
+        return jsonify({'error': 'Missing origin or dest'}), 400
+    try:
+        origin_coords = geocode_address(origin)
+        dest_coords = geocode_address(dest)
+        if not origin_coords or not dest_coords:
+            return jsonify({'error': 'Could not geocode address'}), 400
+        olat, olng = origin_coords
+        dlat, dlng = dest_coords
+        osrm = requests.get(
+            f'https://router.project-osrm.org/route/v1/driving/{olng},{olat};{dlng},{dlat}',
+            params={'overview': 'false'},
+            timeout=5
+        )
+        data = osrm.json()
+        if data.get('code') != 'Ok':
+            return jsonify({'error': 'Routing failed'}), 400
+        minutes = round(data['routes'][0]['duration'] / 60)
+        return jsonify({'minutes': minutes})
+    except Exception as e:
+        app.logger.error(f'Stop-to-stop error: {e}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/eta')
@@ -426,11 +546,101 @@ def send_sms():
     data = request.json or {}
     phone = data.get('phone', '').strip()
     message = data.get('message', '').strip()
+    sms_date = data.get('delivery_date', '').strip()
+    sms_driver = data.get('driver', '').strip()
+    sms_truck = data.get('truck', '').strip()
+    sms_delivery_order = data.get('delivery_order', '').strip()
     if not phone or not message:
         return jsonify({'success': False, 'error': 'Missing phone or message'}), 400
-    # TODO: Replace with Twilio / Vonage / Telnyx when provider is selected
-    app.logger.info(f'SMS stub — To: {phone} | Message: {message}')
-    return jsonify({'success': True, 'stub': True})
+
+    if not config.TWILIO_ACCOUNT_SID or not config.TWILIO_AUTH_TOKEN or not config.TWILIO_MESSAGING_SERVICE_SID:
+        app.logger.warning(f'Twilio not configured — SMS not sent. To: {phone} | Message: {message}')
+        return jsonify({'success': False, 'error': 'SMS provider not configured'}), 503
+
+    to_number = phone
+    dev_note = ''
+    if config.DEV_SMS_OVERRIDE:
+        to_number = config.DEV_SMS_OVERRIDE
+        dev_note = f'[DEV — intended for {phone}] '
+
+    try:
+        from twilio.rest import Client
+        client = Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
+        client.messages.create(
+            body=dev_note + message,
+            messaging_service_sid=config.TWILIO_MESSAGING_SERVICE_SID,
+            to=to_number,
+        )
+        app.logger.info(f'SMS sent — To: {to_number} | Message: {dev_note}{message}')
+        sent_at = datetime.now().isoformat()
+        if sms_date and sms_driver and sms_truck and sms_delivery_order:
+            try:
+                with sqlite3.connect(DELIVERY_DB) as conn:
+                    conn.execute(
+                        'INSERT INTO sms_logs (delivery_date, driver, truck, delivery_order, sent_at) VALUES (?, ?, ?, ?, ?)',
+                        (sms_date, sms_driver, sms_truck, sms_delivery_order, sent_at)
+                    )
+            except Exception as log_err:
+                app.logger.error(f'SMS log error: {log_err}')
+        return jsonify({'success': True, 'sent_at': format_time(sent_at)})
+    except Exception as e:
+        app.logger.error(f'SMS error: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/navigate')
+def navigate():
+    so_raw = request.args.get('so_list', '[]')
+    try:
+        so_list = json.loads(so_raw)
+    except Exception:
+        so_list = []
+    nav_date = request.args.get('date', '')
+    nav_driver = request.args.get('driver', '')
+    nav_truck = request.args.get('truck', '')
+    nav_delivery_order = request.args.get('delivery_order', '')
+    last_text_sent = get_last_text(nav_date, nav_driver, nav_truck, nav_delivery_order)
+    return render_template('navigate.html',
+        customer=request.args.get('customer', ''),
+        address_street=request.args.get('street', ''),
+        address_city=request.args.get('city', ''),
+        contact=request.args.get('contact', ''),
+        phone=request.args.get('phone', ''),
+        notes=request.args.get('notes', ''),
+        so_list=so_list,
+        so_list_json=so_raw,
+        maps_url=request.args.get('maps_url', '#'),
+        display_address=request.args.get('address', ''),
+        back_url=request.args.get('back', '/'),
+        driver=nav_driver,
+        date=nav_date,
+        truck=nav_truck,
+        delivery_order=nav_delivery_order,
+        delivered=request.args.get('delivered', ''),
+        company=config.COMPANY_NAME,
+        last_text_sent=last_text_sent,
+    )
+
+
+@app.route('/api/unmark-delivered', methods=['POST'])
+def unmark_delivered():
+    data = request.json or {}
+    delivery_date = data.get('date', '')
+    driver = data.get('driver', '')
+    truck = data.get('truck', '')
+    delivery_order = data.get('delivery_order', '')
+    if not all([delivery_date, driver, truck, delivery_order]):
+        return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+    try:
+        with sqlite3.connect(DELIVERY_DB) as conn:
+            conn.execute(
+                'DELETE FROM deliveries WHERE delivery_date=? AND driver=? AND truck=? AND delivery_order=?',
+                (delivery_date, driver, truck, delivery_order)
+            )
+        return jsonify({'success': True})
+    except Exception as e:
+        app.logger.error(f'Unmark delivered error: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 if __name__ == '__main__':
