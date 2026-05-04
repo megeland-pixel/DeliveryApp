@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Projects\" -Directory)",
+      "Bash(Select-Object -First 20)",
+      "Read(//c/Projects/**)",
+      "PowerShell(New-Item -ItemType Directory -Path \"c:\\\\Projects\\\\DeliveryApp\\\\static\\\\images\" -Force)",
+      "PowerShell(Move-Item \"c:\\\\Projects\\\\DeliveryApp\\\\static\\\\css\\\\usa_LOGO_Transparent.png\" \"c:\\\\Projects\\\\DeliveryApp\\\\static\\\\images\\\\usa_LOGO_Transparent.png\")",
+      "Bash(python -c ' *)"
+    ],
+    "additionalDirectories": [
+      "C:\\GitRepo"
+    ]
+  }
+}

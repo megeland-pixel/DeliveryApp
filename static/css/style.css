@@ -1,0 +1,747 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --primary: #1B4F8A;
+    --primary-dark: #143d6b;
+    --green: #2d7d46;
+    --green-dark: #236138;
+    --amber: #b45309;
+    --amber-bg: #fef3c7;
+    --bg: #f0f2f5;
+    --card-bg: #ffffff;
+    --text: #111827;
+    --text-muted: #6b7280;
+    --border: #e5e7eb;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --radius: 12px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Index page ────────────────────────────────────────────── */
+
+.index-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.login-card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 40px 36px;
+    width: 100%;
+    max-width: 480px;
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.logo-icon {
+    font-size: 52px;
+    line-height: 1;
+    margin-bottom: 12px;
+}
+
+.site-logo {
+    max-width: 220px;
+    max-height: 100px;
+    object-fit: contain;
+    margin-bottom: 12px;
+}
+
+.login-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+}
+
+.form-control {
+    width: 100%;
+    padding: 14px 16px;
+    font-size: 18px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+    appearance: auto;
+}
+
+.form-control:focus {
+    border-color: var(--primary);
+}
+
+.form-control:disabled {
+    background: #f9fafb;
+    color: var(--text-muted);
+}
+
+.field-hint {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+
+/* ── Buttons ───────────────────────────────────────────────── */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 20px;
+    font-size: 16px;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s, opacity 0.15s;
+    touch-action: manipulation;
+    user-select: none;
+}
+
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--primary-dark);
+}
+
+.btn-secondary {
+    background: #e5e7eb;
+    color: var(--text);
+}
+
+.btn-secondary:hover {
+    background: #d1d5db;
+}
+
+.btn-navigate {
+    background: var(--green);
+    color: #fff;
+    width: 100%;
+    margin-bottom: 8px;
+}
+
+.btn-navigate:hover {
+    background: var(--green-dark);
+}
+
+.btn-text {
+    background: var(--primary);
+    color: #fff;
+    width: 100%;
+}
+
+.btn-text:hover {
+    background: var(--primary-dark);
+}
+
+.btn-success {
+    background: var(--green) !important;
+    color: #fff !important;
+}
+
+.btn-deliver {
+    background: #e5e7eb;
+    color: var(--text);
+    width: 100%;
+}
+
+.btn-deliver:hover {
+    background: #d1d5db;
+}
+
+.btn-delivered-done {
+    background: #d1fae5;
+    color: #065f46;
+    width: 100%;
+    font-weight: 600;
+    font-size: 15px;
+    text-align: center;
+    padding: 12px;
+    border-radius: 8px;
+}
+
+.btn-confirm-deliver {
+    background: var(--green);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    flex: 1;
+    padding: 16px;
+    font-size: 17px;
+    font-weight: 600;
+}
+
+.btn-confirm-deliver:hover:not(:disabled) {
+    background: var(--green-dark);
+}
+
+.btn-confirm-deliver:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.deliver-customer {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.deliver-address {
+    font-size: 15px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.deliver-contact {
+    display: flex;
+    gap: 12px;
+    font-size: 15px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.deliver-so-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+    margin-bottom: 4px;
+}
+
+.deliver-notes {
+    margin-top: 12px;
+}
+
+.order-table-wrap {
+    margin-top: 16px;
+}
+
+.order-table-header {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--primary);
+    background: #eff6ff;
+    padding: 6px 10px;
+    border-radius: 6px 6px 0 0;
+    border: 1px solid #bfdbfe;
+    border-bottom: none;
+}
+
+.order-lines-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    border: 1px solid #bfdbfe;
+    border-radius: 0 0 6px 6px;
+    overflow: hidden;
+}
+
+.order-lines-table thead th {
+    background: #f8fafc;
+    padding: 7px 10px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+}
+
+.order-lines-table tbody td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+.order-lines-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.order-lines-table tbody tr:nth-child(even) {
+    background: #f9fafb;
+}
+
+.order-lines-table td:first-child {
+    white-space: nowrap;
+    font-weight: 500;
+    width: 28%;
+}
+
+.qty-col {
+    text-align: right;
+    white-space: nowrap;
+    width: 10%;
+    color: var(--text-muted);
+}
+
+.lines-loading {
+    color: var(--text-muted);
+    font-size: 14px;
+    padding: 16px 0 4px;
+}
+
+.lines-error {
+    color: #dc2626;
+    font-size: 14px;
+    padding: 12px 0 4px;
+}
+
+.lines-empty {
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    padding: 10px;
+}
+
+.btn-large {
+    width: 100%;
+    padding: 18px;
+    font-size: 20px;
+    margin-top: 8px;
+}
+
+.btn-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
+/* ── Schedule header ───────────────────────────────────────── */
+
+.schedule-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--primary);
+    color: #fff;
+    padding: 16px 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.header-logo {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.back-btn {
+    font-size: 26px;
+    color: #fff;
+    text-decoration: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.back-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.header-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.header-driver {
+    display: block;
+    font-size: 20px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.header-date {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+.stop-count {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ── ETA banner ────────────────────────────────────────────── */
+
+.eta-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: #1a3a5c;
+    color: #fff;
+    padding: 10px 20px;
+    font-size: 15px;
+}
+
+.eta-banner-label {
+    opacity: 0.8;
+}
+
+.eta-banner-time {
+    font-size: 20px;
+    font-weight: 700;
+    color: #7dd3fc;
+}
+
+/* ── Stop list ─────────────────────────────────────────────── */
+
+.stop-list {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+/* ── Stop card ─────────────────────────────────────────────── */
+
+.stop-card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.stop-card-next {
+    border-left: 4px solid var(--primary);
+}
+
+.stop-card-delivered {
+    opacity: 0.5;
+}
+
+.stop-number {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: 24px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.stop-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.stop-customer {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    line-height: 1.2;
+}
+
+.stop-address {
+    font-size: 15px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.stop-contact {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 15px;
+    margin-bottom: 8px;
+}
+
+.contact-name {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.contact-phone {
+    color: var(--text-muted);
+}
+
+.stop-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.badge-so      { background: #dbeafe; color: #1e40af; }
+.badge-contact { background: #f3f4f6; color: #374151; }
+.badge-phone   { background: #f3f4f6; color: #374151; font-family: monospace; }
+.badge-called  { background: #d1fae5; color: #065f46; }
+
+.stop-notes {
+    font-size: 14px;
+    background: var(--amber-bg);
+    color: var(--amber);
+    border-left: 3px solid #f59e0b;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-weight: 500;
+    margin-top: 4px;
+    white-space: pre-wrap;
+}
+
+.stop-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+    width: 120px;
+}
+
+/* ── Empty / alert states ──────────────────────────────────── */
+
+.empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--text-muted);
+    font-size: 18px;
+}
+
+.alert {
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-size: 15px;
+    margin-bottom: 16px;
+}
+
+.alert-error {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* ── SMS modal ─────────────────────────────────────────────── */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal-card {
+    background: #fff;
+    border-radius: var(--radius);
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 6px 10px;
+    border-radius: 6px;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    background: var(--border);
+}
+
+.modal-body {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.modal-contact {
+    font-size: 16px;
+    color: var(--text-muted);
+}
+
+.modal-contact strong {
+    color: var(--text);
+}
+
+.eta-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.eta-label {
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.eta-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.eta-btn {
+    background: #e5e7eb;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    touch-action: manipulation;
+    min-width: 44px;
+}
+
+.eta-btn:hover {
+    background: #d1d5db;
+}
+
+.eta-input {
+    width: 72px;
+    text-align: center;
+    padding: 10px 8px;
+    font-size: 22px;
+    font-weight: 700;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    outline: none;
+}
+
+.eta-input:focus {
+    border-color: var(--primary);
+}
+
+.message-preview {
+    background: #f9fafb;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.message-preview label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.message-preview p {
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--text);
+}
+
+.send-status {
+    font-size: 13px;
+    text-align: center;
+    min-height: 18px;
+}
+
+.status-success { color: var(--green); }
+.status-error   { color: #dc2626; }
+
+.modal-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.modal-actions .btn {
+    flex: 1;
+    padding: 16px;
+    font-size: 17px;
+}
+
+/* ── Tablet-size tweaks (landscape) ────────────────────────── */
+
+@media (min-width: 768px) {
+    .stop-card {
+        padding: 24px;
+    }
+    .stop-customer {
+        font-size: 22px;
+    }
+    .stop-actions {
+        width: 130px;
+    }
+}

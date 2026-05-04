@@ -1,0 +1,437 @@
+from dotenv import load_dotenv
+load_dotenv()
+
+from flask import Flask, render_template, request, jsonify, redirect, url_for
+import pyodbc
+from datetime import date, datetime
+import urllib.parse
+import logging
+import sqlite3
+import json
+import os
+import requests
+import config
+
+app = Flask(__name__)
+app.secret_key = config.SECRET_KEY
+logging.basicConfig(level=logging.INFO)
+
+DELIVERY_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'deliveries.db')
+
+
+def init_db():
+    with sqlite3.connect(DELIVERY_DB) as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                delivery_date TEXT NOT NULL,
+                driver TEXT NOT NULL,
+                truck TEXT NOT NULL,
+                delivery_order TEXT NOT NULL,
+                so_nums TEXT NOT NULL,
+                delivered_at TEXT NOT NULL,
+                UNIQUE(delivery_date, driver, truck, delivery_order)
+            )
+        ''')
+
+
+def get_delivered_keys(delivery_date, driver):
+    try:
+        with sqlite3.connect(DELIVERY_DB) as conn:
+            rows = conn.execute(
+                'SELECT truck, delivery_order FROM deliveries WHERE delivery_date = ? AND driver = ?',
+                (delivery_date, driver)
+            ).fetchall()
+        return {(row[0], row[1]) for row in rows}
+    except Exception:
+        return set()
+
+
+init_db()
+
+
+SCHEDULE_QUERY = """
+SELECT
+    RTRIM(C.NAME_CUSTOMER) AS customer,
+    H.ORDER_NO AS so_num,
+    COALESCE(CONCAT(CONCAT(CAST(X.JOB AS VARCHAR(20)), '-'), CAST(X.SUFFIX AS VARCHAR(20))), 'STOCK') AS wo_num,
+    RTRIM(H.CODE_SORT) AS wu_person,
+    CASE
+        WHEN H.MARK_INFO = '' THEN ''
+        WHEN LOCATE('/', H.MARK_INFO) > 0 THEN SUBSTRING(RTRIM(H.MARK_INFO), 5, LOCATE('/', H.MARK_INFO) - 5)
+        ELSE SUBSTRING(RTRIM(H.MARK_INFO), 5)
+    END AS driver,
+    CASE
+        WHEN H.MARK_INFO = '' THEN ''
+        WHEN LOCATE('/', H.MARK_INFO) > 0 THEN SUBSTRING(RTRIM(H.MARK_INFO), LOCATE('/', H.MARK_INFO) + 6)
+        ELSE '1'
+    END AS truck,
+    COALESCE(RTRIM(X.PART), 'STOCK') AS line_item,
+    COALESCE(RTRIM(O.PART), 'STOCK') AS step,
+    COALESCE(S.sumEst, 0) AS estimated,
+    COALESCE(S.sumAct, 0) AS actual,
+    UPPER(LTRIM(RTRIM(N.JOB_NOTE))) AS notes,
+    CASE
+        WHEN LTRIM(RTRIM(SUBSTRING(H.MARK_INFO, 3, 1))) = '' THEN '99'
+        ELSE SUBSTRING(H.MARK_INFO, 3, 1)
+    END AS delivery_order,
+    RTRIM(LTRIM(H.MARK_INFO)) AS mark_info,
+    CT.CALL_DATE AS called,
+    RTRIM(COALESCE(ST.ADDRESS_1_SHIP, '')) AS address_1,
+    RTRIM(COALESCE(ST.ADDRESS_2_SHIP, '')) AS address_2,
+    RTRIM(COALESCE(ST.ADDRESS_3_SHIP, '')) AS address_3,
+    RTRIM(COALESCE(ST.ADDRESS_4_SHIP, '')) AS address_4,
+    RTRIM(COALESCE(ST.ADDRESS_5_SHIP, '')) AS address_5,
+    RTRIM(COALESCE(ST.CITY_SHIP, '')) AS city,
+    RTRIM(COALESCE(ST.STATE_SHIP, '')) AS state,
+    RTRIM(COALESCE(ST.CODE_ZIP_SHIP, '')) AS zip,
+    RTRIM(COALESCE(BT.CONTACT, '')) AS contact,
+    RTRIM(COALESCE(BT.CONTACT_PHONE, '')) AS phone
+FROM V_ORDER_HEADER H
+INNER JOIN V_CUSTOMER_MASTER C ON H.CUSTOMER = C.CUSTOMER
+LEFT JOIN V_ORDER_TO_WO X ON H.ORDER_NO = X.ORDER_NO
+LEFT JOIN XMOG_SO_NOTES N ON H.ORDER_NO = N.ORDER_NO
+LEFT JOIN (
+    SELECT JOB, SUFFIX, MIN(CAST(SEQ AS INTEGER)) AS MinSeq
+    FROM V_JOB_OPERATIONS
+    WHERE UNITS_OPEN > UNITS_COMPLETE
+    GROUP BY JOB, SUFFIX
+) M ON M.JOB = X.JOB AND M.SUFFIX = X.SUFFIX
+LEFT JOIN (
+    SELECT JOB, SUFFIX, SUM(HOURS_ESTIMATED) AS sumEst, SUM(HOURS_ACTUAL) AS sumAct
+    FROM V_JOB_OPERATIONS
+    WHERE LMO = 'L'
+    GROUP BY JOB, SUFFIX
+) S ON S.JOB = X.JOB AND S.SUFFIX = X.SUFFIX
+LEFT JOIN V_JOB_OPERATIONS O
+    ON O.JOB = M.JOB AND O.SUFFIX = M.SUFFIX
+    AND CAST(O.SEQ AS INTEGER) = M.MinSeq AND O.LMO = 'L'
+LEFT JOIN (
+    SELECT C.ORDER_NO, C.CALL_DATE
+    FROM MDE_orderCall C
+    INNER JOIN (
+        SELECT ORDER_NO, MAX(CALL_ID) AS MaxCallID
+        FROM MDE_orderCall
+        GROUP BY ORDER_NO
+    ) M ON C.ORDER_NO = M.ORDER_NO AND C.CALL_ID = M.MaxCallID
+) CT ON H.ORDER_NO = CT.ORDER_NO
+LEFT JOIN V_ORDER_SHIP_TO ST ON H.ORDER_NO = ST.ORDER_NO
+LEFT JOIN V_ORDER_BILL_TO BT ON H.ORDER_NO = BT.ORDER_NO
+INNER JOIN (
+    SELECT DISTINCT ORDER_NO
+    FROM V_ORDER_LINES
+    WHERE PART LIKE 'FRT%'
+    AND DATE_ITEM_PROM = ?
+) FRT ON FRT.ORDER_NO = H.ORDER_NO
+WHERE H.SHIP_VIA NOT LIKE '%Pick Up%'
+ORDER BY
+    CASE WHEN RTRIM(SUBSTRING(H.MARK_INFO, 5)) = '' THEN 1 ELSE 0 END,
+    6, 12, 5, 3 ASC
+"""
+
+
+def get_db_connection():
+    return pyodbc.connect(DSN=config.DSN_NAME, UID=config.DB_USER, PWD=config.DB_PASSWORD)
+
+
+def fetch_stops(delivery_date):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(SCHEDULE_QUERY, (delivery_date,))
+        columns = [col[0] for col in cursor.description]
+        rows = []
+        for row in cursor.fetchall():
+            stop = dict(zip(columns, row))
+
+            # Normalize any None values to empty strings for string fields
+            for key in ('address_1', 'address_2', 'address_3', 'address_4', 'address_5',
+                        'city', 'state', 'zip', 'contact', 'phone', 'notes', 'driver', 'wo_num'):
+                if stop.get(key) is None:
+                    stop[key] = ''
+
+            # Format called date if it came back as a date/datetime object
+            called = stop.get('called')
+            if called and hasattr(called, 'strftime'):
+                stop['called'] = called.strftime('%m/%d/%Y')
+            elif called:
+                stop['called'] = str(called)
+
+            # Address line 1: all non-empty street lines joined
+            stop['address_street'] = ', '.join(
+                stop[k] for k in ('address_1', 'address_2', 'address_3', 'address_4', 'address_5') if stop[k]
+            )
+            # Address line 2: City, State Zip
+            city_state = ', '.join(p for p in [stop['city'], stop['state']] if p)
+            stop['address_city_line'] = (city_state + ' ' + stop['zip']).strip() if city_state else stop['zip']
+
+            # For geocoding/maps, skip C/O and ATTN lines to get the actual street address
+            _skip = ('C/O', 'ATTN', 'ATTENTION', 'IN CARE OF')
+            street_for_geo = next(
+                (stop[k] for k in ('address_1', 'address_2', 'address_3', 'address_4', 'address_5')
+                 if stop[k] and not stop[k].upper().startswith(_skip)),
+                ''
+            )
+            maps_parts = [p for p in [street_for_geo, stop['city'], stop['state'], stop['zip']] if p]
+            maps_addr = ', '.join(maps_parts)
+            stop['display_address'] = maps_addr
+            stop['maps_url'] = (
+                'https://www.google.com/maps/dir/?api=1&destination=' + urllib.parse.quote(maps_addr)
+            ) if maps_addr else ''
+
+            rows.append(stop)
+        return rows
+    finally:
+        conn.close()
+
+
+def group_stops_by_order(stops):
+    """One card per (truck, delivery_order) load — lists all SO#s on that load."""
+    seen = {}
+    result = []
+    for stop in stops:
+        key = (stop['driver'], stop['truck'], stop['delivery_order'])
+        if key not in seen:
+            entry = stop.copy()
+            entry['so_list'] = [stop['so_num']]
+            seen[key] = entry
+            result.append(entry)
+        else:
+            if stop['so_num'] not in seen[key]['so_list']:
+                seen[key]['so_list'].append(stop['so_num'])
+    return result
+
+
+@app.route('/')
+def index():
+    selected_date = date.today().isoformat()
+    try:
+        all_stops = fetch_stops(selected_date)
+        drivers = sorted(set(s['driver'] for s in all_stops if s.get('driver')))
+
+        truck_data = {}
+        for driver in drivers:
+            driver_stops = [s for s in all_stops if s.get('driver') == driver]
+            grouped = group_stops_by_order(driver_stops)
+            delivered_keys = get_delivered_keys(selected_date, driver)
+            counts = {}
+            for stop in grouped:
+                t = stop['truck']
+                if t not in counts:
+                    counts[t] = {'stop_count': 0, 'delivered_count': 0}
+                counts[t]['stop_count'] += 1
+                if (t, stop['delivery_order']) in delivered_keys:
+                    counts[t]['delivered_count'] += 1
+            trucks = []
+            for t, d in counts.items():
+                all_delivered = d['stop_count'] > 0 and d['delivered_count'] == d['stop_count']
+                trucks.append({'truck': t, 'stop_count': d['stop_count'], 'all_delivered': all_delivered})
+            trucks.sort(key=lambda x: (x['all_delivered'], x['truck']))
+            truck_data[driver] = trucks
+
+        error = None
+    except Exception as e:
+        app.logger.error(f'DB error on index: {e}')
+        drivers = []
+        truck_data = {}
+        error = 'Could not connect to the database. Check DSN configuration.'
+    return render_template('index.html', selected_date=selected_date, drivers=drivers,
+                           truck_data=truck_data, error=error)
+
+
+@app.route('/api/drivers')
+def api_drivers():
+    selected_date = request.args.get('date', date.today().isoformat())
+    try:
+        all_stops = fetch_stops(selected_date)
+        drivers = sorted(set(s['driver'] for s in all_stops if s.get('driver')))
+        return jsonify({'drivers': drivers})
+    except Exception as e:
+        app.logger.error(f'DB error on api_drivers: {e}')
+        return jsonify({'drivers': [], 'error': str(e)}), 500
+
+
+@app.route('/api/trucks')
+def api_trucks():
+    selected_date = request.args.get('date', date.today().isoformat())
+    driver = request.args.get('driver', '').strip()
+    if not driver:
+        return jsonify({'trucks': []})
+    try:
+        all_stops = fetch_stops(selected_date)
+        driver_stops = [s for s in all_stops if s.get('driver') == driver]
+        grouped = group_stops_by_order(driver_stops)
+        delivered_keys = get_delivered_keys(selected_date, driver)
+
+        truck_data = {}
+        for stop in grouped:
+            t = stop['truck']
+            if t not in truck_data:
+                truck_data[t] = {'stop_count': 0, 'delivered_count': 0}
+            truck_data[t]['stop_count'] += 1
+            if (t, stop['delivery_order']) in delivered_keys:
+                truck_data[t]['delivered_count'] += 1
+
+        trucks = []
+        for t, d in truck_data.items():
+            all_delivered = d['stop_count'] > 0 and d['delivered_count'] == d['stop_count']
+            trucks.append({'truck': t, 'stop_count': d['stop_count'], 'all_delivered': all_delivered})
+
+        trucks.sort(key=lambda x: (x['all_delivered'], x['truck']))
+        return jsonify({'trucks': trucks})
+    except Exception as e:
+        app.logger.error(f'DB error on api_trucks: {e}')
+        return jsonify({'trucks': [], 'error': str(e)}), 500
+
+
+@app.route('/schedule')
+def schedule():
+    driver = request.args.get('driver', '').strip()
+    truck = request.args.get('truck', '').strip()
+    selected_date = date.today().isoformat()
+    if not driver or not truck:
+        return redirect(url_for('index'))
+    try:
+        all_stops = fetch_stops(selected_date)
+        driver_stops = [s for s in all_stops if s.get('driver') == driver and s.get('truck') == truck]
+        stops = group_stops_by_order(driver_stops)
+        delivered_keys = get_delivered_keys(selected_date, driver)
+        for stop in stops:
+            stop['delivered'] = (stop['truck'], stop['delivery_order']) in delivered_keys
+        # Delivered stops go to the bottom
+        stops.sort(key=lambda s: s['delivered'])
+        error = None
+    except Exception as e:
+        app.logger.error(f'DB error on schedule: {e}')
+        stops = []
+        error = 'Could not load schedule.'
+    return render_template('schedule.html',
+                           driver=driver,
+                           truck=truck,
+                           selected_date=selected_date,
+                           stops=stops,
+                           company=config.COMPANY_NAME,
+                           error=error)
+
+
+_geocode_cache = {}
+
+
+def geocode_address(address):
+    if address in _geocode_cache:
+        return _geocode_cache[address]
+    resp = requests.get(
+        'https://nominatim.openstreetmap.org/search',
+        params={'q': address, 'format': 'json', 'limit': 1},
+        headers={'User-Agent': 'UniversalSpiralAirDeliveryApp/1.0'},
+        timeout=5
+    )
+    results = resp.json()
+    if not results:
+        return None
+    coords = (float(results[0]['lat']), float(results[0]['lon']))
+    _geocode_cache[address] = coords
+    return coords
+
+
+@app.route('/api/eta')
+def get_eta():
+    try:
+        origin_lat = float(request.args['lat'])
+        origin_lng = float(request.args['lng'])
+        address = request.args.get('address', '').strip()
+        if not address:
+            return jsonify({'error': 'No address provided'}), 400
+
+        coords = geocode_address(address)
+        if not coords:
+            return jsonify({'error': 'Could not locate address'}), 400
+
+        dest_lat, dest_lng = coords
+        osrm = requests.get(
+            f'https://router.project-osrm.org/route/v1/driving/{origin_lng},{origin_lat};{dest_lng},{dest_lat}',
+            params={'overview': 'false'},
+            timeout=5
+        )
+        data = osrm.json()
+        if data.get('code') != 'Ok':
+            return jsonify({'error': 'Routing failed'}), 400
+
+        minutes = round(data['routes'][0]['duration'] / 60)
+        return jsonify({'minutes': minutes})
+    except Exception as e:
+        app.logger.error(f'ETA error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/order-lines')
+def order_lines():
+    so_nums = [s.strip() for s in request.args.get('so_nums', '').split(',') if s.strip()]
+    if not so_nums:
+        return jsonify({'orders': {}})
+    placeholders = ','.join('?' * len(so_nums))
+    query = f"""
+        SELECT ORDER_NO, RTRIM(PART) AS part, RTRIM(DESCRIPTION) AS description,
+               CAST(ROUND(QTY_ORDERED, 0) AS INTEGER) AS qty
+        FROM V_ORDER_LINES
+        WHERE ORDER_NO IN ({placeholders})
+          AND PART NOT LIKE 'FRT%'
+        ORDER BY ORDER_NO, RECORD_NO
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(query, so_nums)
+        orders = {}
+        for row in cursor.fetchall():
+            key = str(row[0])
+            orders.setdefault(key, []).append({
+                'part': str(row[1] or '').strip(),
+                'description': str(row[2] or '').strip(),
+                'qty': int(row[3]) if row[3] is not None else ''
+            })
+        conn.close()
+        return jsonify({'orders': orders})
+    except Exception as e:
+        app.logger.error(f'Order lines error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mark-delivered', methods=['POST'])
+def mark_delivered():
+    data = request.json or {}
+    delivery_date = data.get('date', '').strip()
+    driver = data.get('driver', '').strip()
+    truck = data.get('truck', '').strip()
+    delivery_order = data.get('delivery_order', '').strip()
+    so_nums = data.get('so_nums', [])
+    if not all([delivery_date, driver, delivery_order]):
+        return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+    try:
+        with sqlite3.connect(DELIVERY_DB) as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO deliveries
+                    (delivery_date, driver, truck, delivery_order, so_nums, delivered_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (delivery_date, driver, truck, delivery_order,
+                  json.dumps(so_nums), datetime.now().isoformat()))
+        return jsonify({'success': True})
+    except Exception as e:
+        app.logger.error(f'Mark delivered error: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/send-sms', methods=['POST'])
+def send_sms():
+    data = request.json or {}
+    phone = data.get('phone', '').strip()
+    message = data.get('message', '').strip()
+    if not phone or not message:
+        return jsonify({'success': False, 'error': 'Missing phone or message'}), 400
+    # TODO: Replace with Twilio / Vonage / Telnyx when provider is selected
+    app.logger.info(f'SMS stub — To: {phone} | Message: {message}')
+    return jsonify({'success': True, 'stub': True})
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5002, debug=False)

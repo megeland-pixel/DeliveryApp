@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ driver }} &ndash; Schedule</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="schedule-page">
+
+    <header class="schedule-header">
+        <a href="{{ url_for('index') }}" class="back-btn">&#8592;</a>
+        <img src="{{ url_for('static', filename='images/usa_LOGO_Transparent.png') }}" alt="Logo" class="header-logo">
+        <div class="header-info">
+            <span class="header-driver">{{ driver }} &mdash; Truck {{ truck }}</span>
+            <span class="header-date">{{ selected_date }}</span>
+        </div>
+        <span class="stop-count">
+            {{ stops|length }} stop{{ 's' if stops|length != 1 else '' }}
+        </span>
+    </header>
+
+    {% if stops %}
+    <div id="eta-banner" class="eta-banner">
+        <span class="eta-banner-label">Next stop drive time:</span>
+        <span id="eta-banner-time" class="eta-banner-time">Acquiring GPS&hellip;</span>
+    </div>
+    {% endif %}
+
+    <main class="stop-list">
+        {% if error %}
+            <div class="alert alert-error">{{ error }}</div>
+        {% elif not stops %}
+            <div class="empty-state">No stops found for {{ driver }} on {{ selected_date }}.</div>
+        {% else %}
+            {% set ns = namespace(next_found=false) %}
+            {% for stop in stops %}
+            <div class="stop-card{% if not stop.delivered and not ns.next_found %} stop-card-next{% endif %}{% if stop.delivered %} stop-card-delivered{% endif %}"
+                 data-driver="{{ driver }}"
+                 data-date="{{ selected_date }}"
+                 data-truck="{{ stop.truck }}"
+                 data-delivery-order="{{ stop.delivery_order }}"
+                 data-so-list='{{ stop.so_list | tojson }}'
+                 data-customer="{{ stop.customer }}"
+                 data-address-street="{{ stop.address_street }}"
+                 data-address-city="{{ stop.address_city_line }}"
+                 data-contact="{{ stop.contact }}"
+                 data-phone="{{ stop.phone }}"
+                 data-notes="{{ stop.notes }}"
+                 {% if not stop.delivered and not ns.next_found %}data-next-address="{{ stop.display_address }}"{% endif %}>
+            {% if not stop.delivered %}{% set ns.next_found = true %}{% endif %}
+                <div class="stop-number">
+                    {% if stop.delivery_order == '99' %}&ndash;{% else %}{{ stop.delivery_order }}{% endif %}
+                </div>
+                <div class="stop-info">
+                    <div class="stop-customer">{{ stop.customer }}</div>
+                    {% if stop.address_street or stop.address_city_line %}
+                    <div class="stop-address">
+                        {% if stop.address_street %}<div>{{ stop.address_street }}</div>{% endif %}
+                        {% if stop.address_city_line %}<div>{{ stop.address_city_line }}</div>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if stop.contact or stop.phone %}
+                    <div class="stop-contact">
+                        {% if stop.contact %}<span class="contact-name">{{ stop.contact }}</span>{% endif %}
+                        {% if stop.phone %}<span class="contact-phone">{{ stop.phone }}</span>{% endif %}
+                    </div>
+                    {% endif %}
+                    <div class="stop-meta">
+                        {% for so in stop.so_list %}
+                        <span class="badge badge-so">SO# {{ so }}</span>
+                        {% endfor %}
+                        {% if stop.called %}
+                        <span class="badge badge-called">Called: {{ stop.called }}</span>
+                        {% endif %}
+                    </div>
+                    {% if stop.notes %}
+                    <div class="stop-notes">{{ stop.notes }}</div>
+                    {% endif %}
+                </div>
+                <div class="stop-actions">
+                    {% if stop.delivered %}
+                    <div class="btn btn-delivered-done">&#10003; Delivered</div>
+                    {% else %}
+                    {% if stop.maps_url %}
+                    <a href="{{ stop.maps_url }}" target="_blank" rel="noopener" class="btn btn-navigate">
+                        <span class="btn-icon">&#128506;</span>
+                        <span>Navigate</span>
+                    </a>
+                    {% endif %}
+                    {% if stop.phone %}
+                    <button class="btn btn-text"
+                            data-contact="{{ stop.contact or stop.customer }}"
+                            data-phone="{{ stop.phone }}"
+                            onclick="openSmsModal(this)">
+                        <span class="btn-icon">&#128172;</span>
+                        <span>Text</span>
+                    </button>
+                    {% endif %}
+                    <button class="btn btn-deliver" onclick="openDeliverModal(this)">
+                        Details
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% endif %}
+    </main>
+
+    <!-- SMS Modal -->
+    <div id="sms-overlay" class="modal-overlay" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Text Customer</h2>
+                <button class="modal-close" onclick="closeSmsModal()">&#10005;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-contact">
+                    To: <strong id="modal-contact-name"></strong>
+                    &mdash; <span id="modal-phone"></span>
+                </p>
+
+                <div class="eta-row">
+                    <span class="eta-label">Minutes away:</span>
+                    <div class="eta-controls">
+                        <button class="eta-btn" onclick="adjustEta(-5)">-5</button>
+                        <button class="eta-btn" onclick="adjustEta(-1)">-1</button>
+                        <input type="number" id="eta-minutes" value="15" min="1" max="120" class="eta-input">
+                        <button class="eta-btn" onclick="adjustEta(1)">+1</button>
+                        <button class="eta-btn" onclick="adjustEta(5)">+5</button>
+                    </div>
+                </div>
+
+                <div class="message-preview">
+                    <label>Message preview:</label>
+                    <p id="message-preview-text"></p>
+                </div>
+
+                <div id="send-status" class="send-status"></div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeSmsModal()">Cancel</button>
+                    <button class="btn btn-primary" id="send-btn" onclick="sendSms()">Send Text</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delivery Confirmation Modal -->
+    <div id="deliver-overlay" class="modal-overlay" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Order Details</h2>
+                <button class="modal-close" onclick="closeDeliverModal()">&#10005;</button>
+            </div>
+            <div class="modal-body">
+                <div id="deliver-detail"></div>
+                <div id="deliver-status" class="send-status"></div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeDeliverModal()">Close</button>
+                    <button class="btn btn-confirm-deliver" id="confirm-deliver-btn" onclick="confirmDelivery()">
+                        &#10003; Mark as Delivered
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const COMPANY = {{ company | tojson }};
+        let currentPhone = '';
+        let currentContact = '';
+        let currentDeliverCard = null;
+
+        // ── Delivery confirmation ──────────────────────────────
+
+        function openDeliverModal(btn) {
+            currentDeliverCard = btn.closest('.stop-card');
+            const d = currentDeliverCard.dataset;
+            const soList = JSON.parse(d.soList || '[]');
+
+            // Render header info immediately, placeholder for order lines
+            let html = `<div class="deliver-customer">${d.customer}</div>`;
+            if (d.addressStreet) html += `<div class="deliver-address">${d.addressStreet}</div>`;
+            if (d.addressCity)   html += `<div class="deliver-address">${d.addressCity}</div>`;
+            if (d.contact || d.phone) {
+                html += `<div class="deliver-contact">`;
+                if (d.contact) html += `<span class="contact-name">${d.contact}</span>`;
+                if (d.phone)   html += `<span class="contact-phone">${d.phone}</span>`;
+                html += `</div>`;
+            }
+            if (d.notes) html += `<div class="stop-notes deliver-notes">${d.notes}</div>`;
+            html += `<div id="order-lines-section"><p class="lines-loading">Loading order lines&hellip;</p></div>`;
+
+            document.getElementById('deliver-detail').innerHTML = html;
+            document.getElementById('deliver-status').textContent = '';
+            const confirmBtn = document.getElementById('confirm-deliver-btn');
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = '✓ Mark as Delivered';
+            document.getElementById('deliver-overlay').style.display = 'flex';
+
+            // Fetch and render order line tables
+            fetch(`/api/order-lines?so_nums=${soList.join(',')}`)
+                .then(r => r.json())
+                .then(data => {
+                    const section = document.getElementById('order-lines-section');
+                    if (!section) return;
+                    if (data.error || !data.orders) {
+                        section.innerHTML = `<p class="lines-error">Could not load order lines.</p>`;
+                        return;
+                    }
+                    let tablesHtml = '';
+                    soList.forEach(soNum => {
+                        const lines = data.orders[String(soNum)] || [];
+                        tablesHtml += `<div class="order-table-wrap">
+                            <div class="order-table-header">SO# ${soNum}</div>
+                            <table class="order-lines-table">
+                                <thead><tr><th>Part</th><th>Description</th><th class="qty-col">Qty</th></tr></thead>
+                                <tbody>`;
+                        if (lines.length) {
+                            lines.forEach(l => {
+                                tablesHtml += `<tr><td>${l.part}</td><td>${l.description}</td><td class="qty-col">${l.qty}</td></tr>`;
+                            });
+                        } else {
+                            tablesHtml += `<tr><td colspan="2" class="lines-empty">No lines found</td></tr>`;
+                        }
+                        tablesHtml += `</tbody></table></div>`;
+                    });
+                    section.innerHTML = tablesHtml;
+                })
+                .catch(() => {
+                    const section = document.getElementById('order-lines-section');
+                    if (section) section.innerHTML = `<p class="lines-error">Could not load order lines.</p>`;
+                });
+        }
+
+        function closeDeliverModal() {
+            document.getElementById('deliver-overlay').style.display = 'none';
+            currentDeliverCard = null;
+        }
+
+        document.getElementById('deliver-overlay').addEventListener('click', function (e) {
+            if (e.target === this) closeDeliverModal();
+        });
+
+        async function confirmDelivery() {
+            if (!currentDeliverCard) return;
+            const d = currentDeliverCard.dataset;
+            const confirmBtn = document.getElementById('confirm-deliver-btn');
+            const statusEl = document.getElementById('deliver-status');
+
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Saving…';
+
+            try {
+                const res = await fetch('/api/mark-delivered', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        date: d.date,
+                        driver: d.driver,
+                        truck: d.truck,
+                        delivery_order: d.deliveryOrder,
+                        so_nums: JSON.parse(d.soList || '[]')
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    // Update card in place
+                    currentDeliverCard.classList.remove('stop-card-next');
+                    currentDeliverCard.classList.add('stop-card-delivered');
+                    const actions = currentDeliverCard.querySelector('.stop-actions');
+                    actions.innerHTML = '<div class="btn btn-delivered-done">✓ Delivered</div>';
+                    closeDeliverModal();
+                } else {
+                    statusEl.className = 'send-status status-error';
+                    statusEl.textContent = 'Could not save. Please try again.';
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = '✓ Mark Delivered';
+                }
+            } catch {
+                statusEl.className = 'send-status status-error';
+                statusEl.textContent = 'Network error. Please try again.';
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = '✓ Mark Delivered';
+            }
+        }
+        let driverCoords = null;
+        let lastEtaFetch = 0;
+
+        // ── ETA / GPS ──────────────────────────────────────────
+
+        const nextStopCard = document.querySelector('[data-next-address]');
+        const etaBannerTime = document.getElementById('eta-banner-time');
+
+        async function fetchEta(lat, lng, address) {
+            const params = new URLSearchParams({ lat, lng, address });
+            const res = await fetch(`/api/eta?${params}`);
+            return res.json();
+        }
+
+        async function updateEtaBanner(lat, lng) {
+            if (!nextStopCard || !etaBannerTime) return;
+            const address = nextStopCard.dataset.nextAddress;
+            if (!address) return;
+
+            etaBannerTime.textContent = 'Calculating…';
+            try {
+                const data = await fetchEta(lat, lng, address);
+                if (data.minutes !== undefined) {
+                    const m = data.minutes;
+                    etaBannerTime.textContent = m < 1 ? 'Less than 1 min' : `~${m} min`;
+                } else {
+                    etaBannerTime.textContent = 'Unable to calculate';
+                }
+            } catch {
+                etaBannerTime.textContent = 'Unable to calculate';
+            }
+        }
+
+        if (navigator.geolocation && nextStopCard) {
+            navigator.geolocation.watchPosition(
+                pos => {
+                    const { latitude: lat, longitude: lng } = pos.coords;
+                    driverCoords = { lat, lng };
+                    const now = Date.now();
+                    // Throttle to at most once every 2 minutes
+                    if (now - lastEtaFetch > 120000) {
+                        lastEtaFetch = now;
+                        updateEtaBanner(lat, lng);
+                    }
+                },
+                () => { if (etaBannerTime) etaBannerTime.textContent = 'GPS unavailable'; },
+                { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
+            );
+        } else if (etaBannerTime) {
+            etaBannerTime.textContent = 'GPS not supported';
+        }
+
+        // ── SMS Modal ──────────────────────────────────────────
+
+        function openSmsModal(btn) {
+            currentPhone = btn.dataset.phone;
+            currentContact = btn.dataset.contact;
+            document.getElementById('modal-contact-name').textContent = currentContact;
+            document.getElementById('modal-phone').textContent = currentPhone;
+
+            // Pre-fill minutes from ETA banner if available
+            const bannerText = etaBannerTime ? etaBannerTime.textContent : '';
+            const bannerMatch = bannerText.match(/\d+/);
+            document.getElementById('eta-minutes').value = bannerMatch ? bannerMatch[0] : 15;
+
+            document.getElementById('send-status').textContent = '';
+            document.getElementById('send-status').className = 'send-status';
+            const sendBtn = document.getElementById('send-btn');
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send Text';
+            sendBtn.className = 'btn btn-primary';
+            updateMessagePreview();
+            document.getElementById('sms-overlay').style.display = 'flex';
+        }
+
+        function closeSmsModal() {
+            document.getElementById('sms-overlay').style.display = 'none';
+        }
+
+        document.getElementById('sms-overlay').addEventListener('click', function (e) {
+            if (e.target === this) closeSmsModal();
+        });
+
+        function adjustEta(delta) {
+            const input = document.getElementById('eta-minutes');
+            input.value = Math.max(1, Math.min(120, (parseInt(input.value) || 15) + delta));
+            updateMessagePreview();
+        }
+
+        document.getElementById('eta-minutes').addEventListener('input', updateMessagePreview);
+
+        function updateMessagePreview() {
+            const minutes = parseInt(document.getElementById('eta-minutes').value) || 15;
+            const plural = minutes === 1 ? '' : 's';
+            document.getElementById('message-preview-text').textContent =
+                `Hi ${currentContact}, this is ${COMPANY} – your driver is approximately ${minutes} minute${plural} away!`;
+        }
+
+        function sendSms() {
+            const message = document.getElementById('message-preview-text').textContent;
+            // Strip non-digits from phone number for the sms: URL
+            const phone = currentPhone.replace(/\D/g, '');
+            window.location.href = `sms:${phone}?body=${encodeURIComponent(message)}`;
+            closeSmsModal();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+.env
+deliveries.db
+__pycache__/
+*.pyc
+*.pyo

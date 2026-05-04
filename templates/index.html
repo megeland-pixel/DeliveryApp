@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delivery Schedule</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="index-page">
+    <div class="login-card">
+        <div class="login-header">
+            <img src="{{ url_for('static', filename='images/usa_LOGO_Transparent.png') }}" alt="Logo" class="site-logo">
+            <h1>Delivery Schedule</h1>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-error">{{ error }}</div>
+        {% endif %}
+
+        <form method="get" action="{{ url_for('schedule') }}" id="main-form">
+            <div class="form-group">
+                <label for="driver">Driver</label>
+                <select id="driver" name="driver" class="form-control"
+                        {% if not drivers %}disabled{% endif %}>
+                    <option value="">-- Select Driver --</option>
+                    {% for d in drivers %}
+                    <option value="{{ d }}">{{ d }}</option>
+                    {% endfor %}
+                </select>
+                {% if not drivers and not error %}
+                <p class="field-hint">No deliveries scheduled for this date.</p>
+                {% endif %}
+            </div>
+
+            <div class="form-group" id="truck-group" style="display:none;">
+                <label for="truck">Truck</label>
+                <select id="truck" name="truck" class="form-control" disabled>
+                    <option value="">-- Select Truck --</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-large" id="submit-btn" disabled>
+                Start Shift
+            </button>
+        </form>
+    </div>
+
+    <script>
+        const TRUCK_DATA   = {{ truck_data | tojson }};
+        const driverSelect = document.getElementById('driver');
+        const truckGroup  = document.getElementById('truck-group');
+        const truckSelect = document.getElementById('truck');
+        const submitBtn   = document.getElementById('submit-btn');
+
+        function resetTrucks() {
+            truckGroup.style.display = 'none';
+            truckSelect.innerHTML = '<option value="">-- Select Truck --</option>';
+            truckSelect.disabled = true;
+            submitBtn.disabled = true;
+        }
+
+        function populateTrucks(driver) {
+            const trucks = TRUCK_DATA[driver] || [];
+            if (trucks.length === 1) {
+                truckSelect.innerHTML = '';
+                const opt = document.createElement('option');
+                opt.value = trucks[0].truck;
+                opt.selected = true;
+                truckSelect.appendChild(opt);
+                truckSelect.disabled = false;
+                truckGroup.style.display = 'none';
+                submitBtn.disabled = false;
+            } else if (trucks.length > 1) {
+                truckSelect.innerHTML = '<option value="">-- Select Truck --</option>';
+                trucks.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.truck;
+                    const stops = `${t.stop_count} stop${t.stop_count !== 1 ? 's' : ''}`;
+                    opt.textContent = t.all_delivered
+                        ? `Truck ${t.truck} (${stops} — All Delivered)`
+                        : `Truck ${t.truck} (${stops})`;
+                    if (t.all_delivered) opt.style.color = '#9ca3af';
+                    truckSelect.appendChild(opt);
+                });
+                truckSelect.disabled = false;
+                truckGroup.style.display = 'block';
+            } else {
+                resetTrucks();
+            }
+        }
+
+        driverSelect.addEventListener('change', () => {
+            if (driverSelect.value) {
+                populateTrucks(driverSelect.value);
+            } else {
+                resetTrucks();
+            }
+        });
+
+        truckSelect.addEventListener('change', () => {
+            submitBtn.disabled = !truckSelect.value;
+        });
+
+        document.getElementById('main-form').addEventListener('submit', e => {
+            if (!driverSelect.value || !truckSelect.value) e.preventDefault();
+        });
+    </script>
+</body>
+</html>
