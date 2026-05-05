@@ -1,6 +1,5 @@
-const CACHE = 'delivery-v5';
+const CACHE = 'delivery-v6';
 const PRECACHE = [
-    '/',
     '/static/css/style.css',
     '/static/images/usa_LOGO_Transparent.png',
     '/static/images/truckLogo.png',
@@ -26,25 +25,29 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
     const url = new URL(e.request.url);
 
-    // Network-first for API calls and dynamic pages (schedule)
-    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/schedule')) {
+    // Always go to the network for HTML pages and API calls — never serve stale
+    if (e.request.mode === 'navigate' || url.pathname.startsWith('/api/')) {
+        e.respondWith(fetch(e.request));
+        return;
+    }
+
+    // Cache-first only for static assets under /static/
+    if (url.pathname.startsWith('/static/')) {
         e.respondWith(
-            fetch(e.request).catch(() => caches.match(e.request))
+            caches.match(e.request).then(cached => {
+                if (cached) return cached;
+                return fetch(e.request).then(res => {
+                    if (res.ok) {
+                        const clone = res.clone();
+                        caches.open(CACHE).then(c => c.put(e.request, clone));
+                    }
+                    return res;
+                });
+            })
         );
         return;
     }
 
-    // Cache-first for static assets
-    e.respondWith(
-        caches.match(e.request).then(cached => {
-            if (cached) return cached;
-            return fetch(e.request).then(res => {
-                if (res.ok) {
-                    const clone = res.clone();
-                    caches.open(CACHE).then(c => c.put(e.request, clone));
-                }
-                return res;
-            });
-        })
-    );
+    // Everything else: network only
+    e.respondWith(fetch(e.request));
 });

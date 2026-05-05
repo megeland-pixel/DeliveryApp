@@ -10,7 +10,9 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Projects\\\\DeliveryApp\" -Recurse)",
       "Bash(Select-Object -Property FullName)",
       "Bash(ConvertTo-Csv -NoTypeInformation)",
-      "Bash(Write-Output)"
+      "Bash(Write-Output)",
+      "Bash(ls \"c:\\\\Projects\\\\\")",
+      "Read(//c//**)"
     ],
     "additionalDirectories": [
       "C:\\GitRepo"
