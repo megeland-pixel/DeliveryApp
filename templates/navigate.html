@@ -473,10 +473,17 @@
     </div>
 
     {% else %}
+    <!-- Live ETA strip -->
+    {% if display_address %}
+    <div id="nav-eta-strip" style="background:#eff6ff; border-bottom:1px solid #bfdbfe; padding:9px 16px; display:flex; align-items:center; gap:8px; flex-shrink:0;">
+        <span style="font-size:13px; color:#1e40af; font-weight:500;">Drive time:</span>
+        <span id="nav-eta-value" style="font-size:14px; font-weight:700; color:#1e40af;">Acquiring GPS&hellip;</span>
+    </div>
+    {% endif %}
     <!-- Map -->
     <div class="nav-map-wrap">
         {% if display_address %}
-        <iframe
+        <iframe id="nav-map-iframe"
             src="https://maps.google.com/maps?saddr=Current+Location&daddr={{ display_address | urlencode }}&output=embed"
             allowfullscreen
             loading="lazy"
@@ -579,6 +586,7 @@
     const DELIVERY_ORDER = {{ delivery_order | tojson }};
     const BACK_URL       = {{ back_url | tojson }};
     const IS_DELIVERED   = {{ 'true' if delivered else 'false' }};
+    const DEST_ADDRESS   = {{ display_address | tojson }};
 
     let lastTextSent = {{ last_text_sent | tojson }};
 
@@ -823,6 +831,60 @@
             btn.textContent = '✕ Not Delivered';
             statusEl.className = 'send-status status-error';
             statusEl.textContent = 'Network error. Please try again.';
+        }
+    }
+
+    // ── Live ETA on navigate page ──────────────────────────
+
+    if (!IS_DELIVERED && DEST_ADDRESS) {
+        const etaValueEl = document.getElementById('nav-eta-value');
+        const mapIframe  = document.getElementById('nav-map-iframe');
+        let mapUpdated   = false;
+        let lastEtaFetch = 0;
+
+        async function updateNavEta(lat, lng) {
+            if (!etaValueEl) return;
+            try {
+                const params = new URLSearchParams({ lat, lng, address: DEST_ADDRESS });
+                const res  = await fetch(`/api/eta?${params}`);
+                const data = await res.json();
+                if (data.minutes !== undefined) {
+                    const m = data.minutes;
+                    etaValueEl.textContent = m < 1 ? '< 1 min' : `~${m} min`;
+                    etaValueEl.style.color = m <= 5 ? '#dc2626' : m <= 15 ? '#b45309' : '#1e40af';
+                } else {
+                    etaValueEl.textContent = 'Unable to calculate';
+                    etaValueEl.style.color = '#6b7280';
+                }
+            } catch {
+                etaValueEl.textContent = 'Unable to calculate';
+                etaValueEl.style.color = '#6b7280';
+            }
+        }
+
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(
+                pos => {
+                    const { latitude: lat, longitude: lng } = pos.coords;
+                    if (!mapUpdated && mapIframe) {
+                        mapUpdated = true;
+                        mapIframe.src =
+                            `https://maps.google.com/maps?saddr=${lat},${lng}&daddr=${encodeURIComponent(DEST_ADDRESS)}&output=embed`;
+                    }
+                    const now = Date.now();
+                    if (now - lastEtaFetch > 60000) {
+                        lastEtaFetch = now;
+                        updateNavEta(lat, lng);
+                    }
+                },
+                () => {
+                    if (etaValueEl) { etaValueEl.textContent = 'GPS unavailable'; etaValueEl.style.color = '#6b7280'; }
+                },
+                { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
+            );
+        } else if (etaValueEl) {
+            etaValueEl.textContent = 'GPS not supported';
+            etaValueEl.style.color = '#6b7280';
         }
     }
 

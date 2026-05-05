@@ -644,4 +644,13 @@ def unmark_delivered():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5002, debug=False)
+    cert = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cert.pem')
+    key = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'key.pem')
+    if os.path.exists(cert) and os.path.exists(key):
+        from cheroot.wsgi import Server
+        from cheroot.ssl.builtin import BuiltinSSLAdapter
+        server = Server(('0.0.0.0', 5002), app)
+        server.ssl_adapter = BuiltinSSLAdapter(cert, key)
+        server.start()
+    else:
+        app.run(host='0.0.0.0', port=5002, debug=False)

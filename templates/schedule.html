@@ -111,9 +111,69 @@
     </main>
 
 
+    <!-- Proximity notification -->
+    <div id="proximity-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.52); z-index:2000; align-items:center; justify-content:center; padding:20px;">
+        <div style="background:#fff; border-radius:14px; width:100%; max-width:420px; box-shadow:0 20px 60px rgba(0,0,0,0.3); overflow:hidden;">
+            <div style="background:#1B4F8A; color:#fff; padding:18px 22px;">
+                <div style="font-size:12px; text-transform:uppercase; letter-spacing:0.08em; opacity:0.75; margin-bottom:5px;">Approaching Stop</div>
+                <div id="prox-customer" style="font-size:20px; font-weight:700; line-height:1.2;"></div>
+            </div>
+            <div style="padding:20px 22px 18px;">
+                <div id="prox-message" style="font-size:16px; color:#374151; margin-bottom:20px; line-height:1.4;"></div>
+                <div style="display:flex; gap:12px;">
+                    <button onclick="dismissProximityAlert()" style="flex:1; padding:14px; font-size:16px; font-weight:600; background:#e5e7eb; color:#111827; border:none; border-radius:8px; cursor:pointer; touch-action:manipulation;">Not Now</button>
+                    <button onclick="openSmsFromProximity()" style="flex:1; padding:14px; font-size:16px; font-weight:600; background:#1B4F8A; color:#fff; border:none; border-radius:8px; cursor:pointer; touch-action:manipulation;">&#128172; Text Customer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SMS modal (triggered from proximity alert) -->
+    <div id="sms-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.52); z-index:3000; align-items:center; justify-content:center; padding:20px;">
+        <div style="background:#fff; border-radius:12px; width:100%; max-width:500px; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:20px 24px 16px; border-bottom:1px solid #e5e7eb;">
+                <h2 style="font-size:20px; font-weight:700; color:#1B4F8A; margin:0;">Text Customer</h2>
+                <button onclick="closeSmsModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#6b7280; padding:4px 10px; border-radius:6px; line-height:1; touch-action:manipulation;">&#10005;</button>
+            </div>
+            <div style="padding:22px 24px; display:flex; flex-direction:column; gap:18px; max-height:72vh; overflow-y:auto;">
+                <p id="sms-modal-contact" style="font-size:15px; color:#6b7280; margin:0;"></p>
+                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                    <span style="font-size:15px; font-weight:600; white-space:nowrap;">Minutes away:</span>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <button onclick="adjustEta(-5)" style="background:#e5e7eb; border:none; border-radius:8px; padding:10px 14px; font-size:15px; font-weight:700; cursor:pointer; min-width:44px; touch-action:manipulation;">-5</button>
+                        <button onclick="adjustEta(-1)" style="background:#e5e7eb; border:none; border-radius:8px; padding:10px 14px; font-size:15px; font-weight:700; cursor:pointer; min-width:44px; touch-action:manipulation;">-1</button>
+                        <input type="number" id="eta-minutes" value="15" min="1" max="120"
+                               style="width:72px; text-align:center; padding:10px 8px; font-size:22px; font-weight:700; border:2px solid #e5e7eb; border-radius:8px; outline:none;">
+                        <button onclick="adjustEta(1)"  style="background:#e5e7eb; border:none; border-radius:8px; padding:10px 14px; font-size:15px; font-weight:700; cursor:pointer; min-width:44px; touch-action:manipulation;">+1</button>
+                        <button onclick="adjustEta(5)"  style="background:#e5e7eb; border:none; border-radius:8px; padding:10px 14px; font-size:15px; font-weight:700; cursor:pointer; min-width:44px; touch-action:manipulation;">+5</button>
+                    </div>
+                </div>
+                <div style="background:#f9fafb; border-radius:8px; padding:16px;">
+                    <label style="font-size:12px; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; display:block;">Message:</label>
+                    <textarea id="message-preview-text"
+                              style="width:100%; min-height:88px; font-size:15px; line-height:1.55; color:#111827; border:2px solid #e5e7eb; border-radius:8px; padding:10px 12px; resize:vertical; font-family:inherit; outline:none; margin-top:6px; box-sizing:border-box;"></textarea>
+                </div>
+                <div id="sms-send-status" style="font-size:13px; text-align:center; min-height:18px;"></div>
+                <div style="display:flex; gap:12px;">
+                    <button onclick="closeSmsModal()" style="flex:1; padding:16px; font-size:17px; font-weight:600; background:#e5e7eb; color:#111827; border:none; border-radius:8px; cursor:pointer; touch-action:manipulation;">Cancel</button>
+                    <button id="sms-send-btn" onclick="sendSms()" style="flex:1; padding:16px; font-size:17px; font-weight:600; background:#1B4F8A; color:#fff; border:none; border-radius:8px; cursor:pointer; touch-action:manipulation;">Send Text</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
     <script>
         let driverCoords = null;
         let lastEtaFetch = 0;
+        let lastKnownEtaMinutes = null;
+        const notifiedStops = new Set();
+        let currentProximityStop = null;
+
+        const COMPANY       = {{ company | tojson }};
+        const DRIVER        = {{ driver | tojson }};
+        const TRUCK         = {{ truck | tojson }};
+        const DELIVERY_DATE = {{ selected_date | tojson }};
 
         // ── ETA / GPS ──────────────────────────────────────────
 
@@ -136,7 +196,9 @@
                 const data = await fetchEta(lat, lng, address);
                 if (data.minutes !== undefined) {
                     const m = data.minutes;
+                    lastKnownEtaMinutes = m;
                     etaBannerTime.textContent = m < 1 ? 'Less than 1 min' : `~${m} min`;
+                    checkProximityAlert(m);
                 } else {
                     etaBannerTime.textContent = 'Unable to calculate';
                 }
@@ -155,8 +217,9 @@
                     const { latitude: lat, longitude: lng } = pos.coords;
                     driverCoords = { lat, lng };
                     const now = Date.now();
-                    // Throttle to at most once every 2 minutes
-                    if (now - lastEtaFetch > 120000) {
+                    // Check every minute when close, every 2 minutes otherwise
+                    const throttle = (lastKnownEtaMinutes !== null && lastKnownEtaMinutes <= 20) ? 60000 : 120000;
+                    if (now - lastEtaFetch > throttle) {
                         lastEtaFetch = now;
                         updateEtaBanner(lat, lng);
                     }
@@ -166,6 +229,122 @@
             );
         } else if (etaBannerTime) {
             etaBannerTime.textContent = 'GPS not supported';
+        }
+
+        // ── Proximity alert ────────────────────────────────────
+
+        function checkProximityAlert(minutes) {
+            if (!nextStopCard || minutes > 15) return;
+            const deliveryOrder = nextStopCard.dataset.deliveryOrder;
+            if (notifiedStops.has(deliveryOrder)) return;
+            const phone = nextStopCard.dataset.phone;
+            if (!phone) return;
+            notifiedStops.add(deliveryOrder);
+            currentProximityStop = nextStopCard.dataset;
+            document.getElementById('prox-customer').textContent = currentProximityStop.customer || 'Next Stop';
+            document.getElementById('prox-message').textContent =
+                `~${minutes} minute${minutes === 1 ? '' : 's'} away — would you like to notify them?`;
+            document.getElementById('proximity-overlay').style.display = 'flex';
+        }
+
+        function dismissProximityAlert() {
+            document.getElementById('proximity-overlay').style.display = 'none';
+        }
+
+        document.getElementById('proximity-overlay').addEventListener('click', function(e) {
+            if (e.target === this) dismissProximityAlert();
+        });
+
+        // ── SMS modal ──────────────────────────────────────────
+
+        function openSmsFromProximity() {
+            document.getElementById('proximity-overlay').style.display = 'none';
+            const d = currentProximityStop;
+            const contact = d.contact || d.customer || '';
+            document.getElementById('sms-modal-contact').innerHTML =
+                `To: <strong>${contact}</strong> &mdash; ${d.phone}`;
+            document.getElementById('eta-minutes').value =
+                lastKnownEtaMinutes !== null ? Math.max(1, lastKnownEtaMinutes) : 15;
+            const statusEl = document.getElementById('sms-send-status');
+            statusEl.textContent = '';
+            statusEl.style.color = '';
+            const sendBtn = document.getElementById('sms-send-btn');
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send Text';
+            sendBtn.style.background = '#1B4F8A';
+            sendBtn.style.color = '#fff';
+            updateMessagePreview();
+            document.getElementById('sms-overlay').style.display = 'flex';
+        }
+
+        function closeSmsModal() {
+            document.getElementById('sms-overlay').style.display = 'none';
+        }
+
+        document.getElementById('sms-overlay').addEventListener('click', function(e) {
+            if (e.target === this) closeSmsModal();
+        });
+
+        function adjustEta(delta) {
+            const input = document.getElementById('eta-minutes');
+            input.value = Math.max(1, Math.min(120, (parseInt(input.value) || 15) + delta));
+            updateMessagePreview();
+        }
+
+        document.getElementById('eta-minutes').addEventListener('input', updateMessagePreview);
+
+        function updateMessagePreview() {
+            if (!currentProximityStop) return;
+            const contact = currentProximityStop.contact || currentProximityStop.customer || '';
+            const minutes = parseInt(document.getElementById('eta-minutes').value) || 15;
+            const plural = minutes === 1 ? '' : 's';
+            document.getElementById('message-preview-text').value =
+                `Hi ${contact}, this is ${COMPANY} – your driver is approximately ${minutes} minute${plural} away.`;
+        }
+
+        async function sendSms() {
+            if (!currentProximityStop) return;
+            const message = document.getElementById('message-preview-text').value.trim();
+            if (!message) return;
+            const sendBtn = document.getElementById('sms-send-btn');
+            const statusEl = document.getElementById('sms-send-status');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending…';
+            statusEl.textContent = '';
+            statusEl.style.color = '';
+            try {
+                const res = await fetch('/api/send-sms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone:          currentProximityStop.phone,
+                        message,
+                        delivery_date:  DELIVERY_DATE,
+                        driver:         DRIVER,
+                        truck:          TRUCK,
+                        delivery_order: currentProximityStop.deliveryOrder,
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    statusEl.style.color = '#2d7d46';
+                    statusEl.textContent = 'Text sent!';
+                    sendBtn.textContent = '✓ Sent';
+                    sendBtn.style.background = '#e5e7eb';
+                    sendBtn.style.color = '#111827';
+                    setTimeout(closeSmsModal, 1500);
+                } else {
+                    statusEl.style.color = '#dc2626';
+                    statusEl.textContent = data.error || 'Failed to send. Please try again.';
+                    sendBtn.disabled = false;
+                    sendBtn.textContent = 'Send Text';
+                }
+            } catch {
+                statusEl.style.color = '#dc2626';
+                statusEl.textContent = 'Network error. Please try again.';
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send Text';
+            }
         }
 
         // ── Navigate page ──────────────────────────────────────
