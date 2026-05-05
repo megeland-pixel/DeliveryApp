@@ -4,7 +4,7 @@ title Update and Restart Delivery App Server
 echo ================================================
 echo  Pulling latest from GitHub...
 echo ================================================
-cd /d "%~dp0"
+cd /d "E:\APPS\DeliveryApp"
 git pull origin master
 if %errorlevel% neq 0 (
     echo ERROR: git pull failed!
