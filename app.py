@@ -34,6 +34,11 @@ def init_db():
                 UNIQUE(delivery_date, driver, truck, delivery_order)
             )
         ''')
+        for col in ('signature TEXT', 'customer TEXT'):
+            try:
+                conn.execute(f'ALTER TABLE deliveries ADD COLUMN {col}')
+            except Exception:
+                pass
         conn.execute('''
             CREATE TABLE IF NOT EXISTS sms_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -194,6 +199,9 @@ def fetch_stops(delivery_date):
         for row in cursor.fetchall():
             stop = dict(zip(columns, row))
 
+            # Pad SO number to 7 digits with leading zeros
+            stop['so_num'] = str(stop['so_num']).zfill(7)
+
             # Normalize any None values to empty strings for string fields
             for key in ('address_1', 'address_2', 'address_3', 'address_4', 'address_5',
                         'city', 'state', 'zip', 'contact', 'phone', 'notes', 'driver', 'wo_num'):
@@ -222,8 +230,13 @@ def fetch_stops(delivery_date):
                  if stop[k] and not stop[k].upper().startswith(_skip)),
                 ''
             )
-            maps_parts = [p for p in [street_for_geo, stop['city'], stop['state'], stop['zip']] if p]
-            maps_addr = ', '.join(maps_parts)
+            # Require at least a city to consider this a routable address;
+            # bare codes like "EDI" with no city/state geocode to wrong places.
+            if stop['city']:
+                maps_parts = [p for p in [street_for_geo, stop['city'], stop['state'], stop['zip']] if p]
+                maps_addr = ', '.join(maps_parts)
+            else:
+                maps_addr = ''
             stop['display_address'] = maps_addr
             stop['maps_url'] = (
                 'https://www.google.com/maps/dir/?api=1&destination=' + urllib.parse.quote(maps_addr)
@@ -489,7 +502,10 @@ def order_lines():
     so_nums = [s.strip() for s in request.args.get('so_nums', '').split(',') if s.strip()]
     if not so_nums:
         return jsonify({'orders': {}})
-    placeholders = ','.join('?' * len(so_nums))
+    # Strip leading zeros for the DB query (ORDER_NO may be numeric),
+    # then re-pad keys in the response to match the 7-digit display format.
+    so_nums_stripped = [str(int(s)) if s.isdigit() else s for s in so_nums]
+    placeholders = ','.join('?' * len(so_nums_stripped))
     query = f"""
         SELECT ORDER_NO, RTRIM(PART) AS part, RTRIM(DESCRIPTION) AS description,
                CAST(ROUND(QTY_ORDERED, 0) AS INTEGER) AS qty
@@ -501,10 +517,10 @@ def order_lines():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(query, so_nums)
+        cursor.execute(query, so_nums_stripped)
         orders = {}
         for row in cursor.fetchall():
-            key = str(row[0])
+            key = str(row[0]).zfill(7)
             orders.setdefault(key, []).append({
                 'part': str(row[1] or '').strip(),
                 'description': str(row[2] or '').strip(),
@@ -525,16 +541,18 @@ def mark_delivered():
     truck = data.get('truck', '').strip()
     delivery_order = data.get('delivery_order', '').strip()
     so_nums = data.get('so_nums', [])
+    signature = data.get('signature', '')
+    customer = data.get('customer', '').strip()
     if not all([delivery_date, driver, delivery_order]):
         return jsonify({'success': False, 'error': 'Missing required fields'}), 400
     try:
         with sqlite3.connect(DELIVERY_DB) as conn:
             conn.execute('''
                 INSERT OR REPLACE INTO deliveries
-                    (delivery_date, driver, truck, delivery_order, so_nums, delivered_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (delivery_date, driver, truck, delivery_order, so_nums, delivered_at, signature, customer)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (delivery_date, driver, truck, delivery_order,
-                  json.dumps(so_nums), datetime.now().isoformat()))
+                  json.dumps(so_nums), datetime.now().isoformat(), signature, customer))
         return jsonify({'success': True})
     except Exception as e:
         app.logger.error(f'Mark delivered error: {e}')
@@ -641,6 +659,138 @@ def unmark_delivered():
     except Exception as e:
         app.logger.error(f'Unmark delivered error: {e}')
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/deliveries')
+def api_deliveries():
+    """
+    JSON delivery status for a given date. Merges ERP schedule with SQLite
+    delivery records. Designed to be consumed by external dashboards as well
+    as the built-in admin page.
+
+    Query params:
+      date  - ISO date string (default: today)
+
+    Response:
+      { "date": "...", "stops": [ { driver, truck, delivery_order, customer,
+        address, so_nums, delivered, delivered_at, has_signature }, ... ] }
+    """
+    selected_date = request.args.get('date', date.today().isoformat())
+    try:
+        all_stops = fetch_stops(selected_date)
+        grouped = group_stops_by_order(all_stops)
+
+        with sqlite3.connect(DELIVERY_DB) as conn:
+            dl_rows = conn.execute(
+                '''SELECT driver, truck, delivery_order, so_nums,
+                          delivered_at, customer,
+                          CASE WHEN signature IS NOT NULL AND signature != '' THEN 1 ELSE 0 END
+                   FROM deliveries WHERE delivery_date = ?''',
+                (selected_date,)
+            ).fetchall()
+
+        dl_map = {}
+        for row in dl_rows:
+            key = (row[0], row[1], row[2])
+            dl_map[key] = {
+                'so_nums': json.loads(row[3] or '[]'),
+                'delivered_at': format_time(row[4]),
+                'customer': row[5] or '',
+                'has_signature': bool(row[6]),
+            }
+
+        stops_out = []
+        for stop in grouped:
+            key = (stop['driver'], stop['truck'], stop['delivery_order'])
+            dl = dl_map.get(key)
+            stops_out.append({
+                'driver':         stop['driver'],
+                'truck':          stop['truck'],
+                'delivery_order': stop['delivery_order'],
+                'customer':       stop['customer'],
+                'address':        stop['display_address'],
+                'so_nums':        stop['so_list'],
+                'delivered':      dl is not None,
+                'delivered_at':   dl['delivered_at'] if dl else None,
+                'has_signature':  dl['has_signature'] if dl else False,
+            })
+
+        return jsonify({'date': selected_date, 'stops': stops_out})
+    except Exception as e:
+        app.logger.error(f'api_deliveries error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/signature')
+def api_signature():
+    delivery_date  = request.args.get('date', '')
+    driver         = request.args.get('driver', '')
+    truck          = request.args.get('truck', '')
+    delivery_order = request.args.get('delivery_order', '')
+    if not all([delivery_date, driver, truck, delivery_order]):
+        return jsonify({'signature': ''}), 400
+    try:
+        with sqlite3.connect(DELIVERY_DB) as conn:
+            row = conn.execute(
+                'SELECT signature FROM deliveries WHERE delivery_date=? AND driver=? AND truck=? AND delivery_order=?',
+                (delivery_date, driver, truck, delivery_order)
+            ).fetchone()
+        return jsonify({'signature': row[0] if row and row[0] else ''})
+    except Exception as e:
+        app.logger.error(f'api_signature error: {e}')
+        return jsonify({'signature': ''}), 500
+
+
+@app.route('/admin')
+def admin():
+    selected_date = request.args.get('date', date.today().isoformat())
+    try:
+        all_stops = fetch_stops(selected_date)
+        grouped = group_stops_by_order(all_stops)
+
+        with sqlite3.connect(DELIVERY_DB) as conn:
+            dl_rows = conn.execute(
+                '''SELECT driver, truck, delivery_order, delivered_at, customer,
+                          CASE WHEN signature IS NOT NULL AND signature != '' THEN 1 ELSE 0 END
+                   FROM deliveries WHERE delivery_date = ?''',
+                (selected_date,)
+            ).fetchall()
+
+        dl_map = {}
+        for row in dl_rows:
+            key = (row[0], row[1], row[2])
+            dl_map[key] = {
+                'delivered_at': format_time(row[3]),
+                'customer': row[4] or '',
+                'has_signature': bool(row[5]),
+            }
+
+        for stop in grouped:
+            key = (stop['driver'], stop['truck'], stop['delivery_order'])
+            dl = dl_map.get(key)
+            stop['delivered']     = dl is not None
+            stop['delivered_at']  = dl['delivered_at'] if dl else ''
+            stop['has_signature'] = dl['has_signature'] if dl else False
+
+        by_driver = {}
+        for stop in grouped:
+            by_driver.setdefault(stop['driver'], []).append(stop)
+
+        total           = len(grouped)
+        delivered_count = sum(1 for s in grouped if s['delivered'])
+        error = None
+    except Exception as e:
+        app.logger.error(f'admin error: {e}')
+        by_driver = {}
+        total = delivered_count = 0
+        error = 'Could not load schedule data.'
+
+    return render_template('admin.html',
+                           selected_date=selected_date,
+                           by_driver=by_driver,
+                           total=total,
+                           delivered_count=delivered_count,
+                           error=error)
 
 
 if __name__ == '__main__':

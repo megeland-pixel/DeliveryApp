@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delivery Status &ndash; Admin</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/truckLogo.png') }}">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f3f4f6; color: #111827; min-height: 100vh; }
+
+        .page-header {
+            background: #1B4F8A;
+            color: #fff;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .page-header h1 { font-size: 20px; font-weight: 700; flex: 1; min-width: 160px; }
+
+        .date-form { display: flex; align-items: center; gap: 8px; }
+        .date-form input[type="date"] {
+            padding: 7px 10px; font-size: 15px; border: none;
+            border-radius: 6px; outline: none; background: rgba(255,255,255,0.15);
+            color: #fff; cursor: pointer;
+        }
+        .date-form input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+        .date-form button {
+            padding: 7px 14px; font-size: 14px; font-weight: 600;
+            background: rgba(255,255,255,0.2); color: #fff; border: none;
+            border-radius: 6px; cursor: pointer;
+        }
+        .date-form button:hover { background: rgba(255,255,255,0.32); }
+
+        .home-link {
+            color: rgba(255,255,255,0.75); font-size: 13px; text-decoration: none;
+        }
+        .home-link:hover { color: #fff; }
+
+        .stats-bar {
+            display: flex; gap: 16px; padding: 16px 24px; flex-wrap: wrap;
+        }
+        .stat-card {
+            background: #fff; border-radius: 10px; padding: 14px 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); min-width: 110px; text-align: center;
+        }
+        .stat-value { font-size: 28px; font-weight: 800; color: #1B4F8A; }
+        .stat-value.green { color: #2d7d46; }
+        .stat-value.amber { color: #b45309; }
+        .stat-label { font-size: 12px; color: #6b7280; font-weight: 600; margin-top: 2px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .main { padding: 0 24px 32px; }
+
+        .driver-section { margin-bottom: 28px; }
+        .driver-heading {
+            font-size: 17px; font-weight: 700; color: #1B4F8A;
+            padding: 10px 0 8px;
+            border-bottom: 2px solid #1B4F8A;
+            margin-bottom: 12px;
+        }
+
+        .stops-table { width: 100%; border-collapse: collapse; background: #fff;
+            border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .stops-table thead th {
+            background: #f8fafc; padding: 9px 14px; text-align: left;
+            font-size: 12px; font-weight: 700; color: #6b7280;
+            text-transform: uppercase; letter-spacing: .05em;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .stops-table tbody td {
+            padding: 11px 14px; font-size: 14px;
+            border-bottom: 1px solid #f3f4f6; vertical-align: middle;
+        }
+        .stops-table tbody tr:last-child td { border-bottom: none; }
+        .stops-table tbody tr:hover { background: #f9fafb; }
+        .stops-table tbody tr.row-delivered { background: #f0fdf4; }
+        .stops-table tbody tr.row-delivered:hover { background: #dcfce7; }
+
+        .badge-stop { display: inline-block; background: #e5e7eb; color: #374151;
+            font-size: 12px; font-weight: 700; border-radius: 4px; padding: 2px 7px; }
+        .badge-delivered { background: #dcfce7; color: #15803d; font-size: 13px;
+            font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+        .badge-pending { background: #fef9c3; color: #92400e; font-size: 13px;
+            font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+
+        .sig-btn {
+            background: none; border: 1px solid #1B4F8A; color: #1B4F8A;
+            font-size: 12px; font-weight: 600; padding: 4px 10px;
+            border-radius: 5px; cursor: pointer; white-space: nowrap;
+        }
+        .sig-btn:hover { background: #eff6ff; }
+        .no-sig { color: #9ca3af; font-size: 13px; }
+
+        .alert-error {
+            background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;
+            border-radius: 8px; padding: 14px 18px; margin: 16px 24px;
+        }
+        .empty-state { text-align: center; color: #6b7280; padding: 40px; font-size: 15px; }
+
+        /* Signature lightbox */
+        #sig-lightbox {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6); z-index: 1000;
+            align-items: center; justify-content: center; padding: 24px;
+        }
+        .sig-lightbox-card {
+            background: #fff; border-radius: 12px; max-width: 560px; width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden;
+        }
+        .sig-lightbox-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 20px; border-bottom: 1px solid #e5e7eb;
+        }
+        .sig-lightbox-header h3 { font-size: 16px; font-weight: 700; color: #1B4F8A; }
+        .sig-lightbox-close {
+            background: none; border: none; font-size: 18px; cursor: pointer;
+            color: #6b7280; padding: 4px 8px; border-radius: 5px; line-height: 1;
+        }
+        .sig-lightbox-close:hover { background: #e5e7eb; }
+        .sig-lightbox-body { padding: 20px; text-align: center; }
+        .sig-lightbox-body img { max-width: 100%; border: 1px solid #e5e7eb; border-radius: 6px; }
+        .sig-lightbox-sub { font-size: 13px; color: #6b7280; margin-top: 10px; }
+
+        @media (max-width: 600px) {
+            .stats-bar { padding: 12px 16px; }
+            .main { padding: 0 16px 24px; }
+            .page-header { padding: 14px 16px; }
+            .stops-table thead th:nth-child(3),
+            .stops-table tbody td:nth-child(3) { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="page-header">
+    <h1>&#128203; Delivery Status</h1>
+    <form class="date-form" method="get" action="/admin">
+        <input type="date" name="date" value="{{ selected_date }}">
+        <button type="submit">Go</button>
+    </form>
+    <a href="/" class="home-link">&#8592; Driver App</a>
+</div>
+
+{% if error %}
+<div class="alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="stats-bar">
+    <div class="stat-card">
+        <div class="stat-value">{{ total }}</div>
+        <div class="stat-label">Total Stops</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value green">{{ delivered_count }}</div>
+        <div class="stat-label">Delivered</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value amber">{{ total - delivered_count }}</div>
+        <div class="stat-label">Pending</div>
+    </div>
+</div>
+
+<div class="main">
+    {% if not by_driver and not error %}
+    <div class="empty-state">No deliveries scheduled for {{ selected_date }}.</div>
+    {% endif %}
+
+    {% for driver, stops in by_driver.items() %}
+    <div class="driver-section">
+        <div class="driver-heading">{{ driver }}</div>
+        <table class="stops-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Customer</th>
+                    <th>Truck</th>
+                    <th>Address</th>
+                    <th>Status</th>
+                    <th>Signature</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for stop in stops %}
+                <tr class="{{ 'row-delivered' if stop.delivered else '' }}">
+                    <td><span class="badge-stop">{{ stop.delivery_order if stop.delivery_order != '99' else '–' }}</span></td>
+                    <td><strong>{{ stop.customer }}</strong></td>
+                    <td>Truck {{ stop.truck }}</td>
+                    <td style="color:#6b7280; font-size:13px;">{{ stop.display_address or '—' }}</td>
+                    <td>
+                        {% if stop.delivered %}
+                        <span class="badge-delivered">&#10003; {{ stop.delivered_at }}</span>
+                        {% else %}
+                        <span class="badge-pending">Pending</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if stop.delivered and stop.has_signature %}
+                        <button class="sig-btn"
+                            data-date="{{ selected_date | e }}"
+                            data-driver="{{ driver | e }}"
+                            data-truck="{{ stop.truck | e }}"
+                            data-order="{{ stop.delivery_order | e }}"
+                            data-customer="{{ stop.customer | e }}"
+                            onclick="viewSignature(this)">
+                            View
+                        </button>
+                        {% elif stop.delivered %}
+                        <span class="no-sig">None</span>
+                        {% else %}
+                        <span class="no-sig">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Signature lightbox -->
+<div id="sig-lightbox">
+    <div class="sig-lightbox-card">
+        <div class="sig-lightbox-header">
+            <h3 id="sig-lightbox-title">Signature</h3>
+            <button class="sig-lightbox-close" onclick="closeLightbox()">&#10005;</button>
+        </div>
+        <div class="sig-lightbox-body">
+            <img id="sig-lightbox-img" src="" alt="Customer signature">
+            <div id="sig-lightbox-sub" class="sig-lightbox-sub"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function viewSignature(btn) {
+        const { date, driver, truck, order: deliveryOrder, customer } = btn.dataset;
+        const params = new URLSearchParams({ date, driver, truck, delivery_order: deliveryOrder });
+        document.getElementById('sig-lightbox-title').textContent = customer + ' — Signature';
+        document.getElementById('sig-lightbox-img').src = '';
+        document.getElementById('sig-lightbox-sub').textContent = 'Loading…';
+        document.getElementById('sig-lightbox').style.display = 'flex';
+
+        try {
+            const res  = await fetch(`/api/signature?${params}`);
+            const data = await res.json();
+            if (data.signature) {
+                document.getElementById('sig-lightbox-img').src = data.signature;
+                document.getElementById('sig-lightbox-sub').textContent = '';
+            } else {
+                document.getElementById('sig-lightbox-sub').textContent = 'No signature on file.';
+            }
+        } catch {
+            document.getElementById('sig-lightbox-sub').textContent = 'Could not load signature.';
+        }
+    }
+
+    function closeLightbox() {
+        document.getElementById('sig-lightbox').style.display = 'none';
+        document.getElementById('sig-lightbox-img').src = '';
+    }
+
+    document.getElementById('sig-lightbox').addEventListener('click', function(e) {
+        if (e.target === this) closeLightbox();
+    });
+
+    // Auto-refresh every 60 seconds so the page stays current
+    setTimeout(() => location.reload(), 60000);
+</script>
+</body>
+</html>
