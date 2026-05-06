@@ -179,6 +179,10 @@
 
         const nextStopCard = document.querySelector('[data-next-address]');
         const etaBannerTime = document.getElementById('eta-banner-time');
+        const etaBanner = document.getElementById('eta-banner');
+        const nextAddress = nextStopCard ? nextStopCard.dataset.nextAddress : '';
+
+        if (etaBanner && !nextAddress) etaBanner.style.display = 'none';
 
         async function fetchEta(lat, lng, address) {
             const params = new URLSearchParams({ lat, lng, address });
@@ -211,7 +215,7 @@
             navigator.serviceWorker.register('/sw.js');
         }
 
-        if (navigator.geolocation && nextStopCard) {
+        if (navigator.geolocation && nextAddress) {
             navigator.geolocation.watchPosition(
                 pos => {
                     const { latitude: lat, longitude: lng } = pos.coords;
@@ -227,7 +231,7 @@
                 () => { if (etaBannerTime) etaBannerTime.textContent = 'GPS unavailable'; },
                 { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
             );
-        } else if (etaBannerTime) {
+        } else if (etaBannerTime && nextAddress) {
             etaBannerTime.textContent = 'GPS not supported';
         }
 
@@ -448,5 +452,6 @@
 
         document.addEventListener('DOMContentLoaded', loadDriveTimes);
     </script>
+    <script src="{{ url_for('static', filename='js/session-guard.js') }}"></script>
 </body>
 </html>
