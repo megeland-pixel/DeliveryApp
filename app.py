@@ -590,6 +590,20 @@ def send_sms():
     if not phone or not message:
         return jsonify({'success': False, 'error': 'Missing phone or message'}), 400
 
+    if config.DEV_MODE:
+        app.logger.info(f'DEV_MODE — SMS suppressed. To: {phone} | Message: {message}')
+        sent_at = datetime.now().isoformat()
+        if sms_date and sms_driver and sms_truck and sms_delivery_order:
+            try:
+                with sqlite3.connect(DELIVERY_DB) as conn:
+                    conn.execute(
+                        'INSERT INTO sms_logs (delivery_date, driver, truck, delivery_order, sent_at) VALUES (?, ?, ?, ?, ?)',
+                        (sms_date, sms_driver, sms_truck, sms_delivery_order, sent_at)
+                    )
+            except Exception as log_err:
+                app.logger.error(f'SMS log error: {log_err}')
+        return jsonify({'success': True, 'sent_at': format_time(sent_at)})
+
     if not config.TWILIO_ACCOUNT_SID or not config.TWILIO_AUTH_TOKEN or not config.TWILIO_MESSAGING_SERVICE_SID:
         app.logger.warning(f'Twilio not configured — SMS not sent. To: {phone} | Message: {message}')
         return jsonify({'success': False, 'error': 'SMS provider not configured'}), 503
@@ -622,7 +636,10 @@ def send_sms():
         return jsonify({'success': True, 'sent_at': format_time(sent_at)})
     except Exception as e:
         app.logger.error(f'SMS error: {e}')
-        return jsonify({'success': False, 'error': str(e)}), 500
+        resp = {'success': False, 'error': str(e)}
+        if config.DEV_MODE:
+            resp['dev_detail'] = str(e)
+        return jsonify(resp), 500
 
 
 @app.route('/navigate')

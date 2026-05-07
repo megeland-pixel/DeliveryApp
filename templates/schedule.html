@@ -137,6 +137,10 @@
                 <h2 style="font-size:20px; font-weight:700; color:#1B4F8A; margin:0;">Text Customer</h2>
                 <button onclick="closeSmsModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#6b7280; padding:4px 10px; border-radius:6px; line-height:1; touch-action:manipulation;">&#10005;</button>
             </div>
+            <div id="sms-fail-banner" style="display:none; background:#fef2f2; border-bottom:1px solid #fecaca; padding:10px 24px; color:#dc2626;">
+                <div style="font-weight:700; font-size:15px;">Message Failed &mdash; please review and try again</div>
+                <div id="sms-fail-detail" style="display:none; font-size:12px; margin-top:4px; font-family:monospace; word-break:break-all;"></div>
+            </div>
             <div style="padding:22px 24px; display:flex; flex-direction:column; gap:18px; max-height:72vh; overflow-y:auto;">
                 <p id="sms-modal-contact" style="font-size:15px; color:#6b7280; margin:0;"></p>
                 <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -309,16 +313,12 @@
                     sendBtn.textContent = '✓ Sent';
                     setTimeout(dismissProximityAlert, 1500);
                 } else {
-                    statusEl.style.color = '#dc2626';
-                    statusEl.textContent = data.error || 'Failed to send. Please try again.';
-                    sendBtn.disabled = false;
-                    sendBtn.textContent = `\u{1F4AC} Text Customer (${mins} min)`;
+                    openSmsFromProximity();
+                    showSmsFail(data.dev_detail);
                 }
             } catch {
-                statusEl.style.color = '#dc2626';
-                statusEl.textContent = 'Network error. Please try again.';
-                sendBtn.disabled = false;
-                sendBtn.textContent = `\u{1F4AC} Text Customer (${mins} min)`;
+                openSmsFromProximity();
+                showSmsFail();
             }
         }
 
@@ -328,8 +328,18 @@
 
         // ── SMS modal ──────────────────────────────────────────
 
+        function showSmsFail(detail) {
+            const banner = document.getElementById('sms-fail-banner');
+            const detailEl = document.getElementById('sms-fail-detail');
+            banner.style.display = '';
+            if (detail) { detailEl.textContent = detail; detailEl.style.display = ''; }
+            else { detailEl.textContent = ''; detailEl.style.display = 'none'; }
+        }
+
         function openSmsFromProximity() {
             document.getElementById('proximity-overlay').style.display = 'none';
+            document.getElementById('sms-fail-banner').style.display = 'none';
+            document.getElementById('sms-fail-detail').style.display = 'none';
             const d = currentProximityStop;
             const contact = d.contact || d.customer || '';
             document.getElementById('sms-modal-contact').innerHTML =
@@ -407,16 +417,14 @@
                     sendBtn.style.color = '#111827';
                     setTimeout(closeSmsModal, 1500);
                 } else {
-                    statusEl.style.color = '#dc2626';
-                    statusEl.textContent = data.error || 'Failed to send. Please try again.';
                     sendBtn.disabled = false;
                     sendBtn.textContent = 'Send Text';
+                    showSmsFail(data.dev_detail);
                 }
             } catch {
-                statusEl.style.color = '#dc2626';
-                statusEl.textContent = 'Network error. Please try again.';
                 sendBtn.disabled = false;
                 sendBtn.textContent = 'Send Text';
+                showSmsFail();
             }
         }
 

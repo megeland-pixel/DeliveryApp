@@ -640,6 +640,10 @@
             <h2>Text Customer</h2>
             <button class="modal-close" onclick="closeSmsModal()">&#10005;</button>
         </div>
+        <div id="sms-fail-banner" style="display:none; background:#fef2f2; border-bottom:1px solid #fecaca; padding:10px 24px; color:#dc2626;">
+            <div style="font-weight:700; font-size:15px;">Message Failed &mdash; please review and try again</div>
+            <div id="sms-fail-detail" style="display:none; font-size:12px; margin-top:4px; font-family:monospace; word-break:break-all;"></div>
+        </div>
         <div class="modal-body">
             <p class="modal-contact">
                 To: <strong>{{ contact or customer }}</strong> &mdash; <span>{{ phone }}</span><br>
@@ -801,7 +805,17 @@
 
     // ── SMS Modal ──────────────────────────────────────────────
 
+    function showSmsFail(detail) {
+        const banner = document.getElementById('sms-fail-banner');
+        const detailEl = document.getElementById('sms-fail-detail');
+        banner.style.display = '';
+        if (detail) { detailEl.textContent = detail; detailEl.style.display = ''; }
+        else { detailEl.textContent = ''; detailEl.style.display = 'none'; }
+    }
+
     function openSmsModal() {
+        document.getElementById('sms-fail-banner').style.display = 'none';
+        document.getElementById('sms-fail-detail').style.display = 'none';
         document.getElementById('sms-status').textContent = '';
         document.getElementById('sms-status').className = 'send-status';
         const sendBtn = document.getElementById('send-btn');
@@ -881,16 +895,16 @@
                 updateLastTextDisplay(timeStr);
                 setTimeout(closeSmsModal, 1500);
             } else {
-                statusEl.className = 'send-status status-error';
-                statusEl.textContent = data.error || 'Failed to send. Please try again.';
                 sendBtn.disabled = false;
                 sendBtn.textContent = 'Send Text';
+                sendBtn.className = 'btn btn-primary';
+                showSmsFail(data.dev_detail);
             }
         } catch {
-            statusEl.className = 'send-status status-error';
-            statusEl.textContent = 'Network error. Please try again.';
             sendBtn.disabled = false;
             sendBtn.textContent = 'Send Text';
+            sendBtn.className = 'btn btn-primary';
+            showSmsFail();
         }
     }
 
@@ -1121,16 +1135,14 @@
                 etaAlertSuppressed = true;
                 document.getElementById('eta-alert-overlay').style.display = 'none';
             } else {
-                statusEl.className = 'send-status status-error';
-                statusEl.textContent = data.error || 'Failed to send. Try again.';
-                sendBtn.disabled = false;
-                sendBtn.textContent = `Send Text (${mins} min)`;
+                document.getElementById('eta-alert-overlay').style.display = 'none';
+                openSmsModal();
+                showSmsFail(data.dev_detail);
             }
         } catch {
-            statusEl.className = 'send-status status-error';
-            statusEl.textContent = 'Network error. Try again.';
-            sendBtn.disabled = false;
-            sendBtn.textContent = `Send Text (${mins} min)`;
+            document.getElementById('eta-alert-overlay').style.display = 'none';
+            openSmsModal();
+            showSmsFail();
         }
     }
 
