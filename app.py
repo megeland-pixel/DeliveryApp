@@ -502,10 +502,7 @@ def order_lines():
     so_nums = [s.strip() for s in request.args.get('so_nums', '').split(',') if s.strip()]
     if not so_nums:
         return jsonify({'orders': {}})
-    # Strip leading zeros for the DB query (ORDER_NO may be numeric),
-    # then re-pad keys in the response to match the 7-digit display format.
-    so_nums_stripped = [str(int(s)) if s.isdigit() else s for s in so_nums]
-    placeholders = ','.join('?' * len(so_nums_stripped))
+    placeholders = ','.join('?' * len(so_nums))
     query = f"""
         SELECT ORDER_NO, RTRIM(PART) AS part, RTRIM(DESCRIPTION) AS description,
                CAST(ROUND(QTY_ORDERED, 0) AS INTEGER) AS qty
@@ -517,15 +514,37 @@ def order_lines():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(query, so_nums_stripped)
+        cursor.execute(query, so_nums)
         orders = {}
         for row in cursor.fetchall():
             key = str(row[0]).zfill(7)
-            orders.setdefault(key, []).append({
-                'part': str(row[1] or '').strip(),
+            part = str(row[1] or '').strip()
+            line = {
+                'part': part,
                 'description': str(row[2] or '').strip(),
-                'qty': int(row[3]) if row[3] is not None else ''
-            })
+                'qty': int(row[3]) if row[3] is not None else '',
+                'sub_parts': []
+            }
+            orders.setdefault(key, []).append(line)
+
+        # For CAM parts, fetch component list from GCG_7215_MAIN filtered by SO + part number
+        cam_cache = {}  # (so_key, part) -> [sub_parts]
+        for so_key, lines in orders.items():
+            for line in lines:
+                if line['part'].upper().startswith('CAM'):
+                    cache_key = (so_key, line['part'])
+                    if cache_key not in cam_cache:
+                        cursor.execute(
+                            "SELECT RTRIM(FITTING_NAME), QUANTITY FROM GCG_7215_MAIN"
+                            " WHERE SO = ? AND RTRIM(COGS_PART_NUMBER) = ?",
+                            (so_key, line['part'])
+                        )
+                        cam_cache[cache_key] = [
+                            {'name': str(r[0] or '').strip(), 'qty': int(r[1]) if r[1] is not None else ''}
+                            for r in cursor.fetchall()
+                        ]
+                    line['sub_parts'] = cam_cache[cache_key]
+
         conn.close()
         return jsonify({'orders': orders})
     except Exception as e:

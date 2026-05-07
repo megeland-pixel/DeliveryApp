@@ -12,7 +12,8 @@
       "Bash(ConvertTo-Csv -NoTypeInformation)",
       "Bash(Write-Output)",
       "Bash(ls \"c:\\\\Projects\\\\\")",
-      "Read(//c//**)"
+      "Read(//c//**)",
+      "Bash(Select-Object -Property FullName, Name)"
     ],
     "additionalDirectories": [
       "C:\\GitRepo"
