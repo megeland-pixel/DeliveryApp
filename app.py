@@ -606,13 +606,14 @@ def send_sms():
 
     if not config.TWILIO_ACCOUNT_SID or not config.TWILIO_AUTH_TOKEN or not config.TWILIO_MESSAGING_SERVICE_SID:
         app.logger.warning(f'Twilio not configured — SMS not sent. To: {phone} | Message: {message}')
-        return jsonify({'success': False, 'error': 'SMS provider not configured'}), 503
+        return jsonify({'success': False, 'error': 'SMS provider not configured', 'dev_detail': 'Twilio credentials missing from environment'}), 503
 
-    to_number = phone
-    dev_note = ''
-    if config.DEV_SMS_OVERRIDE:
-        to_number = config.DEV_SMS_OVERRIDE
-        dev_note = f'[DEV — intended for {phone}] '
+    if not config.DEV_SMS_OVERRIDE:
+        app.logger.error('DEV_SMS_OVERRIDE not set — refusing to send to live number')
+        return jsonify({'success': False, 'error': 'SMS not configured', 'dev_detail': 'DEV_SMS_OVERRIDE is not set in environment'}), 503
+
+    to_number = config.DEV_SMS_OVERRIDE
+    dev_note = f'[intended for {phone}] '
 
     try:
         from twilio.rest import Client
@@ -622,7 +623,7 @@ def send_sms():
             messaging_service_sid=config.TWILIO_MESSAGING_SERVICE_SID,
             to=to_number,
         )
-        app.logger.info(f'SMS sent — To: {to_number} | Message: {dev_note}{message}')
+        app.logger.info(f'SMS sent — To: {to_number} | {dev_note}{message}')
         sent_at = datetime.now().isoformat()
         if sms_date and sms_driver and sms_truck and sms_delivery_order:
             try:
@@ -636,10 +637,7 @@ def send_sms():
         return jsonify({'success': True, 'sent_at': format_time(sent_at)})
     except Exception as e:
         app.logger.error(f'SMS error: {e}')
-        resp = {'success': False, 'error': str(e)}
-        if config.DEV_MODE:
-            resp['dev_detail'] = str(e)
-        return jsonify(resp), 500
+        return jsonify({'success': False, 'error': 'Message failed', 'dev_detail': str(e)}), 500
 
 
 @app.route('/navigate')
