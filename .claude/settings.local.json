@@ -13,7 +13,8 @@
       "Bash(Write-Output)",
       "Bash(ls \"c:\\\\Projects\\\\\")",
       "Read(//c//**)",
-      "Bash(Select-Object -Property FullName, Name)"
+      "Bash(Select-Object -Property FullName, Name)",
+      "PowerShell(if \\(Test-Path \"c:\\\\Projects\\\\DeliveryApp\\\\.env\"\\) { Get-Content \"c:\\\\Projects\\\\DeliveryApp\\\\.env\" | ForEach-Object { $_.Split\\('='\\)[0] } } else { \"No .env found\" })"
     ],
     "additionalDirectories": [
       "C:\\GitRepo"

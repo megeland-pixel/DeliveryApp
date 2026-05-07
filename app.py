@@ -740,6 +740,35 @@ def api_deliveries():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/vapid-public-key')
+def vapid_public_key():
+    return jsonify({'public_key': config.VAPID_PUBLIC_KEY})
+
+
+@app.route('/api/send-push', methods=['POST'])
+def send_push():
+    data = request.json or {}
+    subscription = data.get('subscription')
+    payload = data.get('payload', {})
+    if not subscription or not config.VAPID_PRIVATE_KEY:
+        return jsonify({'success': False, 'error': 'Push not configured'}), 503
+    try:
+        from pywebpush import webpush, WebPushException
+        webpush(
+            subscription_info=subscription,
+            data=json.dumps(payload),
+            vapid_private_key=config.VAPID_PRIVATE_KEY,
+            vapid_claims={'sub': f'mailto:{config.VAPID_EMAIL}'},
+        )
+        return jsonify({'success': True})
+    except WebPushException as exc:
+        app.logger.error(f'Push error: {exc}')
+        return jsonify({'success': False, 'error': str(exc)}), 500
+    except Exception as exc:
+        app.logger.error(f'Push error: {exc}')
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
 @app.route('/api/signature')
 def api_signature():
     delivery_date  = request.args.get('date', '')

@@ -1,4 +1,4 @@
-const CACHE = 'delivery-v6';
+const CACHE = 'delivery-v7';
 const PRECACHE = [
     '/static/css/style.css',
     '/static/images/usa_LOGO_Transparent.png',
@@ -50,4 +50,49 @@ self.addEventListener('fetch', e => {
 
     // Everything else: network only
     e.respondWith(fetch(e.request));
+});
+
+self.addEventListener('push', event => {
+    const data = event.data ? event.data.json() : {};
+    const title = data.title || 'Delivery Alert';
+    event.waitUntil(
+        self.registration.showNotification(title, {
+            body: data.body || '',
+            icon: '/static/images/icon-192.png',
+            badge: '/static/images/icon-192.png',
+            data: data,
+            tag: 'eta-alert',
+            requireInteraction: true,
+            actions: [
+                { action: 'send_text',    title: data.send_label || 'Send Text' },
+                { action: 'edit_message', title: 'Edit Message' },
+            ],
+        })
+    );
+});
+
+self.addEventListener('notificationclick', event => {
+    const data = event.notification.data || {};
+    event.notification.close();
+
+    if (event.action === 'send_text' && data.sms_data) {
+        event.waitUntil(
+            fetch('/api/send-sms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data.sms_data),
+            }).catch(() => {})
+        );
+    } else {
+        // edit_message or tapping the notification body — open/focus the navigate page
+        const target = (data.navigate_url || '/') + (event.action === 'edit_message' ? '&open_sms=1' : '');
+        event.waitUntil(
+            clients.matchAll({ type: 'window', includeUncontrolled: true }).then(wins => {
+                for (const w of wins) {
+                    if (w.url.includes('/navigate') && 'focus' in w) return w.focus();
+                }
+                return clients.openWindow(target);
+            })
+        );
+    }
 });

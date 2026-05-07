@@ -417,7 +417,7 @@
         #sig-canvas {
             display: block;
             width: 100%;
-            height: 200px;
+            height: 300px;
             border: 2px solid #e5e7eb;
             border-radius: 8px;
             background: #f9fafb;
@@ -718,6 +718,29 @@
     </div>
 </div>
 
+<!-- ETA Quick-Action Popup -->
+<div id="eta-alert-overlay" class="modal-overlay" style="display:none;">
+    <div class="modal-card" style="max-width:420px;">
+        <div class="modal-header">
+            <h2>Delivery Alert</h2>
+        </div>
+        <div class="modal-body" style="gap:12px;">
+            <p style="font-size:17px; font-weight:600; color:#111827;">
+                You&rsquo;re <span id="eta-alert-mins"></span> from <span id="eta-alert-customer"></span>
+            </p>
+            <p style="font-size:15px; color:#6b7280;">Would you like to text the customer?</p>
+            <div id="eta-alert-status" class="send-status"></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px; padding:0 24px 24px;">
+            <div style="display:flex; gap:10px;">
+                <button class="btn btn-secondary" style="flex:1;" onclick="dismissEtaAlert()">Cancel</button>
+                <button class="btn btn-primary" id="eta-send-btn" style="flex:2;" onclick="sendEtaText()">Send Text</button>
+            </div>
+            <button class="btn btn-secondary" style="width:100%;" onclick="editEtaMessage()">Edit Message</button>
+        </div>
+    </div>
+</div>
+
 <!-- No Signature Confirmation Modal -->
 <div id="no-sig-overlay" class="modal-overlay" style="display:none;">
     <div class="modal-card" style="max-width:420px;">
@@ -761,6 +784,7 @@
 
     function updateLastTextDisplay(timeStr) {
         lastTextSent = timeStr;
+        etaAlertSuppressed = true;
         const bar = document.getElementById('last-text-bar');
         const barTime = document.getElementById('last-text-time');
         const modalEl = document.getElementById('modal-last-text');
@@ -1000,9 +1024,154 @@
         }
     }
 
+    // ── Helpers ────────────────────────────────────────────
+
+    function roundUpToFive(n) {
+        return Math.ceil(Math.max(n, 1) / 5) * 5;
+    }
+
+    function urlBase64ToUint8Array(b64) {
+        const pad = '='.repeat((4 - b64.length % 4) % 4);
+        const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+        return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+    }
+
+    // ── Push subscription ──────────────────────────────────
+
+    let pushSubscription = null;
+
+    async function initPush() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || IS_DELIVERED || !PHONE) return;
+        try {
+            const perm = await Notification.requestPermission();
+            if (perm !== 'granted') return;
+            const reg = await navigator.serviceWorker.ready;
+            const resp = await fetch('/api/vapid-public-key');
+            const { public_key } = await resp.json();
+            if (!public_key) return;
+            pushSubscription = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(public_key),
+            });
+        } catch (e) {
+            console.warn('Push subscription failed:', e);
+        }
+    }
+
+    // ── ETA alert popup ────────────────────────────────────
+
+    let etaAlertSuppressed = false;
+    let currentAlertMinutes = 15;
+    let pushSentForStop = false;
+
+    function showEtaAlert(minutes) {
+        currentAlertMinutes = roundUpToFive(minutes);
+        document.getElementById('eta-alert-mins').textContent = `~${currentAlertMinutes} min`;
+        document.getElementById('eta-alert-customer').textContent = CUSTOMER;
+        const sendBtn = document.getElementById('eta-send-btn');
+        sendBtn.textContent = `Send Text (${currentAlertMinutes} min)`;
+        sendBtn.disabled = false;
+        document.getElementById('eta-alert-status').textContent = '';
+        document.getElementById('eta-alert-status').className = 'send-status';
+        // Pre-fill ETA in the SMS modal too
+        const etaInput = document.getElementById('eta-minutes');
+        if (etaInput) { etaInput.value = currentAlertMinutes; updateMessagePreview(); }
+        document.getElementById('eta-alert-overlay').style.display = 'flex';
+    }
+
+    function dismissEtaAlert() {
+        etaAlertSuppressed = true;
+        document.getElementById('eta-alert-overlay').style.display = 'none';
+    }
+
+    async function sendEtaText() {
+        const mins = currentAlertMinutes;
+        const plural = mins === 1 ? '' : 's';
+        const message = `Hi ${CONTACT}, this is ${COMPANY} – your driver is approximately ${mins} minute${plural} away.`;
+        const sendBtn = document.getElementById('eta-send-btn');
+        const statusEl = document.getElementById('eta-alert-status');
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Sending…';
+        statusEl.textContent = '';
+        try {
+            const res = await fetch('/api/send-sms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: PHONE, message,
+                    delivery_date: DATE, driver: DRIVER,
+                    truck: TRUCK, delivery_order: DELIVERY_ORDER,
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                const timeStr = data.sent_at || (() => {
+                    const now = new Date();
+                    const h = now.getHours() % 12 || 12;
+                    const m = String(now.getMinutes()).padStart(2, '0');
+                    return `${h}:${m} ${now.getHours() < 12 ? 'AM' : 'PM'}`;
+                })();
+                updateLastTextDisplay(timeStr);
+                etaAlertSuppressed = true;
+                document.getElementById('eta-alert-overlay').style.display = 'none';
+            } else {
+                statusEl.className = 'send-status status-error';
+                statusEl.textContent = data.error || 'Failed to send. Try again.';
+                sendBtn.disabled = false;
+                sendBtn.textContent = `Send Text (${mins} min)`;
+            }
+        } catch {
+            statusEl.className = 'send-status status-error';
+            statusEl.textContent = 'Network error. Try again.';
+            sendBtn.disabled = false;
+            sendBtn.textContent = `Send Text (${mins} min)`;
+        }
+    }
+
+    function editEtaMessage() {
+        document.getElementById('eta-alert-overlay').style.display = 'none';
+        openSmsModal();
+    }
+
+    async function sendEtaPush(minutes) {
+        if (!pushSubscription || !PHONE) return;
+        const mins = roundUpToFive(minutes);
+        const plural = mins === 1 ? '' : 's';
+        const message = `Hi ${CONTACT}, this is ${COMPANY} – your driver is approximately ${mins} minute${plural} away.`;
+        try {
+            await fetch('/api/send-push', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    subscription: pushSubscription.toJSON(),
+                    payload: {
+                        title: 'Delivery ETA Alert',
+                        body: `You’re ~${mins} min from ${CUSTOMER}`,
+                        send_label: `Send Text (${mins} min)`,
+                        sms_data: {
+                            phone: PHONE, message,
+                            delivery_date: DATE, driver: DRIVER,
+                            truck: TRUCK, delivery_order: DELIVERY_ORDER,
+                        },
+                        navigate_url: window.location.href,
+                    },
+                }),
+            });
+        } catch (e) {
+            console.warn('Push send failed:', e);
+        }
+    }
+
     // ── Live ETA on navigate page ──────────────────────────
 
     if (!IS_DELIVERED && DEST_ADDRESS) {
+        initPush();
+
+        // Open SMS modal if returning from a push notification "Edit Message" action
+        if (new URLSearchParams(window.location.search).get('open_sms') === '1' && PHONE) {
+            setTimeout(openSmsModal, 400);
+        }
+
         const etaValueEl = document.getElementById('nav-eta-value');
         const mapIframe  = document.getElementById('nav-map-iframe');
         let mapUpdated   = false;
@@ -1018,6 +1187,20 @@
                     const m = data.minutes;
                     etaValueEl.textContent = m < 1 ? '< 1 min' : `~${m} min`;
                     etaValueEl.style.color = m <= 5 ? '#dc2626' : m <= 15 ? '#b45309' : '#1e40af';
+
+                    if (m <= 15 && PHONE) {
+                        // In-app popup: show on every refresh unless suppressed or text already sent
+                        if (!etaAlertSuppressed && !lastTextSent) {
+                            showEtaAlert(m);
+                        }
+                        // Push notification: send once per sub-15-min crossing
+                        if (!pushSentForStop) {
+                            pushSentForStop = true;
+                            sendEtaPush(m);
+                        }
+                    } else if (m > 15) {
+                        pushSentForStop = false;
+                    }
                 } else {
                     etaValueEl.textContent = 'Unable to calculate';
                     etaValueEl.style.color = '#6b7280';

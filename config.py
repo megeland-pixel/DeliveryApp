@@ -11,3 +11,7 @@ TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN', '')
 TWILIO_MESSAGING_SERVICE_SID = os.getenv('TWILIO_MESSAGING_SERVICE_SID', '')
 # When set, all outbound SMS are redirected to this number (dev/testing only)
 DEV_SMS_OVERRIDE = os.getenv('DEV_SMS_OVERRIDE', '')
+
+VAPID_PUBLIC_KEY  = os.getenv('VAPID_PUBLIC_KEY', '')
+VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
+VAPID_EMAIL       = os.getenv('VAPID_EMAIL', '')
