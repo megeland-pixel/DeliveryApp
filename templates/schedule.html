@@ -118,12 +118,14 @@
                 <div style="font-size:12px; text-transform:uppercase; letter-spacing:0.08em; opacity:0.75; margin-bottom:5px;">Approaching Stop</div>
                 <div id="prox-customer" style="font-size:20px; font-weight:700; line-height:1.2;"></div>
             </div>
-            <div style="padding:20px 22px 18px;">
-                <div id="prox-message" style="font-size:16px; color:#374151; margin-bottom:20px; line-height:1.4;"></div>
-                <div style="display:flex; gap:12px;">
+            <div style="padding:20px 22px 18px; display:flex; flex-direction:column; gap:10px;">
+                <div id="prox-message" style="font-size:16px; color:#374151; line-height:1.4; margin-bottom:4px;"></div>
+                <div id="prox-send-status" style="font-size:13px; text-align:center; min-height:18px;"></div>
+                <div style="display:flex; gap:10px;">
                     <button onclick="dismissProximityAlert()" style="flex:1; padding:14px; font-size:16px; font-weight:600; background:#e5e7eb; color:#111827; border:none; border-radius:8px; cursor:pointer; touch-action:manipulation;">Not Now</button>
-                    <button onclick="openSmsFromProximity()" style="flex:1; padding:14px; font-size:16px; font-weight:600; background:#1B4F8A; color:#fff; border:none; border-radius:8px; cursor:pointer; touch-action:manipulation;">&#128172; Text Customer</button>
+                    <button id="prox-send-btn" onclick="sendTextFromProximity()" style="flex:2; padding:14px; font-size:16px; font-weight:600; background:#1B4F8A; color:#fff; border:none; border-radius:8px; cursor:pointer; touch-action:manipulation;">&#128172; Text Customer</button>
                 </div>
+                <button onclick="openSmsFromProximity()" style="width:100%; padding:13px; font-size:16px; font-weight:600; background:#e5e7eb; color:#111827; border:none; border-radius:8px; cursor:pointer; touch-action:manipulation;">Edit Message</button>
             </div>
         </div>
     </div>
@@ -169,6 +171,15 @@
         let lastKnownEtaMinutes = null;
         const notifiedStops = new Set();
         let currentProximityStop = null;
+        let currentProximityMinutes = 15;
+
+        function roundUpToFive(n) {
+            return Math.ceil(Math.max(n, 1) / 5) * 5;
+        }
+
+        function etaNotifKey(truck, deliveryOrder) {
+            return `eta_notif|${DELIVERY_DATE}|${DRIVER}|${truck}|${deliveryOrder}`;
+        }
 
         const COMPANY       = {{ company | tojson }};
         const DRIVER        = {{ driver | tojson }};
@@ -240,19 +251,75 @@
         function checkProximityAlert(minutes) {
             if (!nextStopCard || minutes > 15) return;
             const deliveryOrder = nextStopCard.dataset.deliveryOrder;
+            const truck = nextStopCard.dataset.truck;
             if (notifiedStops.has(deliveryOrder)) return;
             const phone = nextStopCard.dataset.phone;
             if (!phone) return;
             notifiedStops.add(deliveryOrder);
+            if (localStorage.getItem(etaNotifKey(truck, deliveryOrder))) return;
             currentProximityStop = nextStopCard.dataset;
+            currentProximityMinutes = roundUpToFive(minutes);
             document.getElementById('prox-customer').textContent = currentProximityStop.customer || 'Next Stop';
             document.getElementById('prox-message').textContent =
-                `~${minutes} minute${minutes === 1 ? '' : 's'} away — would you like to notify them?`;
+                `~${currentProximityMinutes} minute${currentProximityMinutes === 1 ? '' : 's'} away — would you like to notify them?`;
+            const sendBtn = document.getElementById('prox-send-btn');
+            sendBtn.textContent = `\u{1F4AC} Text Customer (ETA ${currentProximityMinutes} min)`;
+            sendBtn.disabled = false;
+            document.getElementById('prox-send-status').textContent = '';
             document.getElementById('proximity-overlay').style.display = 'flex';
         }
 
         function dismissProximityAlert() {
+            if (currentProximityStop) {
+                localStorage.setItem(etaNotifKey(currentProximityStop.truck, currentProximityStop.deliveryOrder), 'dismissed');
+            }
             document.getElementById('proximity-overlay').style.display = 'none';
+        }
+
+        async function sendTextFromProximity() {
+            if (!currentProximityStop) return;
+            const mins = currentProximityMinutes;
+            const contact = currentProximityStop.contact || currentProximityStop.customer || '';
+            const plural = mins === 1 ? '' : 's';
+            const message = `Hi ${contact}, this is ${COMPANY} – your driver is approximately ${mins} minute${plural} away.`;
+            const sendBtn = document.getElementById('prox-send-btn');
+            const statusEl = document.getElementById('prox-send-status');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending…';
+            statusEl.textContent = '';
+            statusEl.style.color = '';
+            try {
+                const res = await fetch('/api/send-sms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone:          currentProximityStop.phone,
+                        message,
+                        delivery_date:  DELIVERY_DATE,
+                        driver:         DRIVER,
+                        truck:          TRUCK,
+                        delivery_order: currentProximityStop.deliveryOrder,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem(etaNotifKey(currentProximityStop.truck, currentProximityStop.deliveryOrder), 'texted');
+                    statusEl.style.color = '#2d7d46';
+                    statusEl.textContent = 'Text sent!';
+                    sendBtn.textContent = '✓ Sent';
+                    setTimeout(dismissProximityAlert, 1500);
+                } else {
+                    statusEl.style.color = '#dc2626';
+                    statusEl.textContent = data.error || 'Failed to send. Please try again.';
+                    sendBtn.disabled = false;
+                    sendBtn.textContent = `\u{1F4AC} Text Customer (${mins} min)`;
+                }
+            } catch {
+                statusEl.style.color = '#dc2626';
+                statusEl.textContent = 'Network error. Please try again.';
+                sendBtn.disabled = false;
+                sendBtn.textContent = `\u{1F4AC} Text Customer (${mins} min)`;
+            }
         }
 
         document.getElementById('proximity-overlay').addEventListener('click', function(e) {
@@ -267,8 +334,7 @@
             const contact = d.contact || d.customer || '';
             document.getElementById('sms-modal-contact').innerHTML =
                 `To: <strong>${contact}</strong> &mdash; ${d.phone}`;
-            document.getElementById('eta-minutes').value =
-                lastKnownEtaMinutes !== null ? Math.max(1, lastKnownEtaMinutes) : 15;
+            document.getElementById('eta-minutes').value = currentProximityMinutes;
             const statusEl = document.getElementById('sms-send-status');
             statusEl.textContent = '';
             statusEl.style.color = '';
@@ -331,6 +397,9 @@
                 });
                 const data = await res.json();
                 if (data.success) {
+                    if (currentProximityStop) {
+                        localStorage.setItem(etaNotifKey(currentProximityStop.truck, currentProximityStop.deliveryOrder), 'texted');
+                    }
                     statusEl.style.color = '#2d7d46';
                     statusEl.textContent = 'Text sent!';
                     sendBtn.textContent = '✓ Sent';

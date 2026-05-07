@@ -733,7 +733,7 @@
         </div>
         <div style="display:flex; flex-direction:column; gap:10px; padding:0 24px 24px;">
             <div style="display:flex; gap:10px;">
-                <button class="btn btn-secondary" style="flex:1;" onclick="dismissEtaAlert()">Cancel</button>
+                <button class="btn btn-secondary" style="flex:1;" onclick="dismissEtaAlert()">Not Now</button>
                 <button class="btn btn-primary" id="eta-send-btn" style="flex:2;" onclick="sendEtaText()">Send Text</button>
             </div>
             <button class="btn btn-secondary" style="width:100%;" onclick="editEtaMessage()">Edit Message</button>
@@ -785,6 +785,7 @@
     function updateLastTextDisplay(timeStr) {
         lastTextSent = timeStr;
         etaAlertSuppressed = true;
+        localStorage.setItem(etaNotifKey(), 'texted');
         const bar = document.getElementById('last-text-bar');
         const barTime = document.getElementById('last-text-time');
         const modalEl = document.getElementById('modal-last-text');
@@ -1030,6 +1031,10 @@
         return Math.ceil(Math.max(n, 1) / 5) * 5;
     }
 
+    function etaNotifKey() {
+        return `eta_notif|${DATE}|${DRIVER}|${TRUCK}|${DELIVERY_ORDER}`;
+    }
+
     function urlBase64ToUint8Array(b64) {
         const pad = '='.repeat((4 - b64.length % 4) % 4);
         const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
@@ -1060,16 +1065,16 @@
 
     // ── ETA alert popup ────────────────────────────────────
 
-    let etaAlertSuppressed = false;
+    let etaAlertSuppressed = !!localStorage.getItem(etaNotifKey());
+    let pushSentForStop    = etaAlertSuppressed;
     let currentAlertMinutes = 15;
-    let pushSentForStop = false;
 
     function showEtaAlert(minutes) {
         currentAlertMinutes = roundUpToFive(minutes);
         document.getElementById('eta-alert-mins').textContent = `~${currentAlertMinutes} min`;
         document.getElementById('eta-alert-customer').textContent = CUSTOMER;
         const sendBtn = document.getElementById('eta-send-btn');
-        sendBtn.textContent = `Send Text (${currentAlertMinutes} min)`;
+        sendBtn.textContent = `Send Text (ETA ${currentAlertMinutes} min)`;
         sendBtn.disabled = false;
         document.getElementById('eta-alert-status').textContent = '';
         document.getElementById('eta-alert-status').className = 'send-status';
@@ -1081,6 +1086,7 @@
 
     function dismissEtaAlert() {
         etaAlertSuppressed = true;
+        localStorage.setItem(etaNotifKey(), 'dismissed');
         document.getElementById('eta-alert-overlay').style.display = 'none';
     }
 
@@ -1134,7 +1140,7 @@
     }
 
     async function sendEtaPush(minutes) {
-        if (!pushSubscription || !PHONE) return;
+        if (!pushSubscription || !PHONE || localStorage.getItem(etaNotifKey())) return;
         const mins = roundUpToFive(minutes);
         const plural = mins === 1 ? '' : 's';
         const message = `Hi ${CONTACT}, this is ${COMPANY} – your driver is approximately ${mins} minute${plural} away.`;
@@ -1147,7 +1153,7 @@
                     payload: {
                         title: 'Delivery ETA Alert',
                         body: `You’re ~${mins} min from ${CUSTOMER}`,
-                        send_label: `Send Text (${mins} min)`,
+                        send_label: `Send Text (ETA ${mins} min)`,
                         sms_data: {
                             phone: PHONE, message,
                             delivery_date: DATE, driver: DRIVER,
