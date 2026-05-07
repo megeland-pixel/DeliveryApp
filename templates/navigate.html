@@ -462,6 +462,32 @@
             background: #f9fafb;
         }
 
+        /* ── Signature thumbnail in details ── */
+        .details-sig-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 6px;
+            margin-top: 20px;
+            display: block;
+        }
+        .details-sig-area {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            background: #f9fafb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 72px;
+        }
+        .details-sig-area:hover, .details-sig-area:active { border-color: #1B4F8A; background: #eff6ff; }
+        .sig-placeholder { color: #9ca3af; font-size: 14px; font-weight: 500; }
+        .sig-thumb { max-width: 100%; max-height: 72px; object-fit: contain; }
+
         /* ── Loading overlay ── */
         #loading-overlay {
             display: none;
@@ -650,12 +676,20 @@
     </div>
     <div class="details-screen-body">
         <div id="details-content"></div>
+        {% if not delivered %}
+        <div style="padding: 0 4px 8px;">
+            <span class="details-sig-label">Signature</span>
+            <div class="details-sig-area" id="details-sig-tap" onclick="openSignatureModal()">
+                <span class="sig-placeholder">&#9998;&nbsp; Tap here to collect signature</span>
+            </div>
+        </div>
+        {% endif %}
         <div id="details-status" class="send-status"></div>
     </div>
     {% if not delivered %}
     <div class="details-screen-footer">
-        <button class="btn btn-confirm-deliver" id="confirm-deliver-btn" onclick="openSignatureModal()">
-            &#9998; Get Signature
+        <button class="btn btn-confirm-deliver" id="confirm-deliver-btn" onclick="confirmDelivery()">
+            &#10003; Mark as Delivered
         </button>
     </div>
     {% endif %}
@@ -666,6 +700,7 @@
     <div class="modal-card" style="max-width:560px;">
         <div class="modal-header">
             <h2>Customer Signature</h2>
+            <button class="modal-close" onclick="document.getElementById('sig-overlay').style.display='none'">&#10005;</button>
         </div>
         <div class="modal-body">
             <div class="sig-customer-name" id="sig-customer-name"></div>
@@ -676,9 +711,27 @@
             <div class="modal-actions" style="flex-direction:column; gap:8px;">
                 <div style="display:flex; gap:12px; width:100%;">
                     <button class="btn btn-secondary" onclick="clearSignature()" style="flex:1;">Clear</button>
-                    <button class="btn btn-confirm-deliver" id="sig-confirm-btn" onclick="submitSignature()" style="flex:2;">&#10003; Confirm Delivery</button>
+                    <button class="btn btn-confirm-deliver" id="sig-confirm-btn" onclick="submitSignature()" style="flex:2;">&#10003; Save Signature</button>
                 </div>
-                <button class="sig-skip-link" onclick="skipSignature()">Skip — deliver without signature</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- No Signature Confirmation Modal -->
+<div id="no-sig-overlay" class="modal-overlay" style="display:none;">
+    <div class="modal-card" style="max-width:420px;">
+        <div class="modal-header">
+            <h2>No Signature</h2>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:16px; color:#374151; line-height:1.5;">
+                There is no signature for this delivery. Would you like to continue without one?
+            </p>
+            <div id="no-sig-status" class="send-status"></div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="no-sig-back-btn" onclick="closeNoSigModal()">Back</button>
+                <button class="btn btn-confirm-deliver" id="no-sig-confirm-btn" onclick="deliverWithoutSig()">Delivered without Signature</button>
             </div>
         </div>
     </div>
@@ -869,8 +922,13 @@
         document.getElementById('details-content').innerHTML = html;
         document.getElementById('details-status').textContent = '';
         const confirmBtn = document.getElementById('confirm-deliver-btn');
-        confirmBtn.disabled = false;
-        confirmBtn.textContent = '✓ Mark as Delivered';
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✓ Mark as Delivered'; }
+        const tapArea = document.getElementById('details-sig-tap');
+        if (tapArea) {
+            tapArea.innerHTML = capturedSignature
+                ? `<img class="sig-thumb" src="${capturedSignature}" alt="Signature">`
+                : `<span class="sig-placeholder">&#9998;&nbsp; Tap here to collect signature</span>`;
+        }
         document.getElementById('details-overlay').style.display = 'flex';
 
         fetch(`/api/order-lines?so_nums=${SO_LIST.join(',')}`)
@@ -1000,7 +1058,8 @@
 
     const sigCanvas = document.getElementById('sig-canvas');
     const sigCtx    = sigCanvas ? sigCanvas.getContext('2d') : null;
-    let sigDrawing  = false;
+    let sigDrawing      = false;
+    let capturedSignature = null;
 
     function initSigCanvas() {
         if (!sigCanvas || !sigCtx) return;
@@ -1049,7 +1108,7 @@
         document.getElementById('sig-status').textContent = '';
         const btn = document.getElementById('sig-confirm-btn');
         btn.disabled = false;
-        btn.textContent = '✓ Confirm Delivery';
+        btn.textContent = '✓ Save Signature';
         document.getElementById('sig-overlay').style.display = 'flex';
         setTimeout(initSigCanvas, 50);
     }
@@ -1076,35 +1135,65 @@
         }
     }
 
-    async function submitSignature() {
+    function submitSignature() {
         if (isSigEmpty()) {
             const statusEl = document.getElementById('sig-status');
             statusEl.className = 'send-status status-error';
-            statusEl.textContent = 'Please sign before confirming.';
+            statusEl.textContent = 'Please sign before saving.';
             return;
         }
-        const btn      = document.getElementById('sig-confirm-btn');
-        const statusEl = document.getElementById('sig-status');
-        btn.disabled   = true;
-        btn.textContent = 'Saving…';
-        statusEl.textContent = '';
-        const signature = sigCanvas.toDataURL('image/png');
-        const result = await markDelivered(signature);
-        if (!result.success) {
-            statusEl.className = 'send-status status-error';
-            statusEl.textContent = result.error || 'Could not save. Please try again.';
-            btn.disabled = false;
-            btn.textContent = '✓ Confirm Delivery';
+        capturedSignature = sigCanvas.toDataURL('image/png');
+        const tapArea = document.getElementById('details-sig-tap');
+        if (tapArea) {
+            tapArea.innerHTML = `<img class="sig-thumb" src="${capturedSignature}" alt="Signature">`;
+        }
+        document.getElementById('sig-overlay').style.display = 'none';
+    }
+
+    function confirmDelivery() {
+        if (capturedSignature) {
+            markDeliveredWithStatus(capturedSignature);
+        } else {
+            openNoSigModal();
         }
     }
 
-    async function skipSignature() {
-        const statusEl = document.getElementById('sig-status');
+    async function markDeliveredWithStatus(signature) {
+        const btn = document.getElementById('confirm-deliver-btn');
+        const statusEl = document.getElementById('details-status');
+        if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+        if (statusEl) { statusEl.textContent = ''; }
+        const result = await markDelivered(signature);
+        if (!result.success) {
+            if (statusEl) { statusEl.className = 'send-status status-error'; statusEl.textContent = result.error || 'Could not save. Please try again.'; }
+            if (btn) { btn.disabled = false; btn.textContent = '✓ Mark as Delivered'; }
+        }
+    }
+
+    function openNoSigModal() {
+        document.getElementById('no-sig-status').textContent = '';
+        const btn = document.getElementById('no-sig-confirm-btn');
+        btn.disabled = false;
+        btn.textContent = 'Delivered without Signature';
+        document.getElementById('no-sig-overlay').style.display = 'flex';
+    }
+
+    function closeNoSigModal() {
+        document.getElementById('no-sig-overlay').style.display = 'none';
+    }
+
+    async function deliverWithoutSig() {
+        const btn = document.getElementById('no-sig-confirm-btn');
+        const statusEl = document.getElementById('no-sig-status');
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
         statusEl.textContent = '';
         const result = await markDelivered('');
         if (!result.success) {
             statusEl.className = 'send-status status-error';
             statusEl.textContent = result.error || 'Could not save. Please try again.';
+            btn.disabled = false;
+            btn.textContent = 'Delivered without Signature';
         }
     }
 
