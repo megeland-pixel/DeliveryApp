@@ -527,11 +527,11 @@ def order_lines():
             }
             orders.setdefault(key, []).append(line)
 
-        # For CAM parts, fetch component list from GCG_7215_MAIN filtered by SO + part number
+        # For CAM/FAB parts, fetch component list from GCG_7215_MAIN filtered by SO + part number
         cam_cache = {}  # (so_key, part) -> [sub_parts]
         for so_key, lines in orders.items():
             for line in lines:
-                if line['part'].upper().startswith('CAM'):
+                if line['part'].upper().startswith(('CAM', 'FAB-')):
                     cache_key = (so_key, line['part'])
                     if cache_key not in cam_cache:
                         cursor.execute(
