@@ -594,6 +594,24 @@ def _find_pdf_on_share(so_padded):
     return None
 
 
+@app.route('/api/prefetch-stops', methods=['POST'])
+def prefetch_stops_api():
+    data = request.json or {}
+    driver = data.get('driver', '').strip()
+    truck = data.get('truck', '').strip()
+    delivery_date = data.get('date', date.today().isoformat()).strip()
+    if not driver:
+        return jsonify({'error': 'Missing driver'}), 400
+    try:
+        all_stops = fetch_stops(delivery_date)
+        driver_stops = [s for s in all_stops if s.get('driver') == driver and (not truck or s.get('truck') == truck)]
+        grouped = group_stops_by_order(driver_stops)
+        return jsonify({'stops': [{'so_list': s['so_list']} for s in grouped]})
+    except Exception as e:
+        app.logger.error(f'Prefetch stops error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/prefetch-pdfs', methods=['POST'])
 def prefetch_pdfs():
     data = request.json or {}

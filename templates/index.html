@@ -70,32 +70,47 @@
         const submitBtn     = document.getElementById('submit-btn');
         const pdfStatus     = document.getElementById('pdf-status');
 
-        async function prefetchPdfs(driver, truck) {
-            pdfStatus.textContent = 'Downloading PDFs…';
+        async function prefetchAll(driver, truck) {
+            pdfStatus.textContent = 'Preparing offline data…';
             pdfStatus.className = 'pdf-status pdf-status-loading';
             try {
-                const r = await fetch('/api/prefetch-pdfs', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({driver, truck, date: SELECTED_DATE})
-                });
-                const data = await r.json();
-                if (data.error) {
-                    pdfStatus.textContent = 'PDF download failed.';
-                    pdfStatus.className = 'pdf-status pdf-status-error';
-                    return;
+                // If cached data is from a previous day, wipe it before re-fetching
+                if ('caches' in window && localStorage.getItem('prefetch_cache_date') !== SELECTED_DATE) {
+                    await Promise.all([caches.delete('pdf-v1'), caches.delete('data-v1')]).catch(() => {});
                 }
-                const available = data.results.filter(r => r.found);
-                const total = data.results.length;
-                // Fetch each available PDF so the service worker caches it on this device
-                await Promise.all(available.map(r => fetch(`/pdf/${r.so}`).catch(() => {})));
-                const found = available.length;
-                pdfStatus.textContent = found === total
-                    ? `${found} PDF${found !== 1 ? 's' : ''} ready.`
-                    : `${found} of ${total} PDF${total !== 1 ? 's' : ''} found.`;
+
+                const body = JSON.stringify({driver, truck, date: SELECTED_DATE});
+                const headers = {'Content-Type': 'application/json'};
+
+                // Kick off PDF availability check and stop list in parallel
+                const [pdfRes, stopsRes] = await Promise.all([
+                    fetch('/api/prefetch-pdfs', {method: 'POST', headers, body}),
+                    fetch('/api/prefetch-stops', {method: 'POST', headers, body}),
+                ]);
+                const [pdfData, stopsData] = await Promise.all([pdfRes.json(), stopsRes.json()]);
+
+                const available = (pdfData.results || []).filter(r => r.found);
+                const pdfTotal  = (pdfData.results || []).length;
+                const stops     = stopsData.stops || [];
+
+                // Fetch PDFs, per-stop order lines, and the schedule page — all in parallel
+                const scheduleUrl = `/schedule?driver=${encodeURIComponent(driver)}&truck=${encodeURIComponent(truck)}`;
+                await Promise.all([
+                    ...available.map(r => fetch(`/pdf/${r.so}`).catch(() => {})),
+                    ...stops.map(s => fetch(`/api/order-lines?so_nums=${s.so_list.join(',')}`).catch(() => {})),
+                    fetch(scheduleUrl).catch(() => {}),
+                ]);
+
+                localStorage.setItem('prefetch_cache_date', SELECTED_DATE);
+
+                const pdfFound   = available.length;
+                const stopCount  = stops.length;
+                pdfStatus.textContent = pdfFound === pdfTotal
+                    ? `${stopCount} stop${stopCount !== 1 ? 's' : ''}, ${pdfFound} PDF${pdfFound !== 1 ? 's' : ''} ready offline.`
+                    : `${stopCount} stop${stopCount !== 1 ? 's' : ''} ready, ${pdfFound} of ${pdfTotal} PDFs found.`;
                 pdfStatus.className = 'pdf-status pdf-status-done';
             } catch {
-                pdfStatus.textContent = 'PDF download failed.';
+                pdfStatus.textContent = 'Offline data download failed.';
                 pdfStatus.className = 'pdf-status pdf-status-error';
             }
         }
@@ -120,7 +135,7 @@
                 truckSelect.disabled = false;
                 truckGroup.style.display = 'none';
                 submitBtn.disabled = false;
-                prefetchPdfs(driver, trucks[0].truck);
+                prefetchAll(driver, trucks[0].truck);
             } else if (trucks.length > 1) {
                 const defaultTruck = trucks.find(t => !t.all_delivered) || trucks[0];
                 truckSelect.innerHTML = '';
@@ -138,7 +153,7 @@
                 truckSelect.disabled = false;
                 truckGroup.style.display = 'block';
                 submitBtn.disabled = false;
-                prefetchPdfs(driver, defaultTruck.truck);
+                prefetchAll(driver, defaultTruck.truck);
             } else {
                 resetTrucks();
             }
@@ -154,7 +169,7 @@
 
         truckSelect.addEventListener('change', () => {
             submitBtn.disabled = !truckSelect.value;
-            if (truckSelect.value) prefetchPdfs(driverSelect.value, truckSelect.value);
+            if (truckSelect.value) prefetchAll(driverSelect.value, truckSelect.value);
         });
 
         document.getElementById('main-form').addEventListener('submit', e => {

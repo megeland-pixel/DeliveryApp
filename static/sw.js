@@ -1,5 +1,6 @@
-const CACHE = 'delivery-v8';
+const CACHE = 'delivery-v9';
 const PDF_CACHE = 'pdf-v1';
+const DATA_CACHE = 'data-v1';
 const PRECACHE = [
     '/static/css/style.css',
     '/static/images/usa_LOGO_Transparent.png',
@@ -17,7 +18,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
     e.waitUntil(
         caches.keys().then(keys =>
-            Promise.all(keys.filter(k => k !== CACHE && k !== PDF_CACHE).map(k => caches.delete(k)))
+            Promise.all(keys.filter(k => k !== CACHE && k !== PDF_CACHE && k !== DATA_CACHE).map(k => caches.delete(k)))
         )
     );
     self.clients.claim();
@@ -26,22 +27,13 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
     const url = new URL(e.request.url);
 
-    // Always go to the network for HTML pages and API calls — never serve stale
-    if (e.request.mode === 'navigate' || url.pathname.startsWith('/api/')) {
-        e.respondWith(fetch(e.request));
-        return;
-    }
-
-    // Cache-first for PDFs — stored in a dedicated cache so they survive SW updates
+    // PDFs: cache-first in dedicated pdf cache
     if (url.pathname.startsWith('/pdf/')) {
         e.respondWith(
             caches.match(e.request).then(cached => {
                 if (cached) return cached;
                 return fetch(e.request).then(res => {
-                    if (res.ok) {
-                        const clone = res.clone();
-                        caches.open(PDF_CACHE).then(c => c.put(e.request, clone));
-                    }
+                    if (res.ok) caches.open(PDF_CACHE).then(c => c.put(e.request, res.clone()));
                     return res;
                 });
             })
@@ -49,16 +41,13 @@ self.addEventListener('fetch', e => {
         return;
     }
 
-    // Cache-first only for static assets under /static/
+    // Static assets: cache-first in main cache
     if (url.pathname.startsWith('/static/')) {
         e.respondWith(
             caches.match(e.request).then(cached => {
                 if (cached) return cached;
                 return fetch(e.request).then(res => {
-                    if (res.ok) {
-                        const clone = res.clone();
-                        caches.open(CACHE).then(c => c.put(e.request, clone));
-                    }
+                    if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
                     return res;
                 });
             })
@@ -66,7 +55,40 @@ self.addEventListener('fetch', e => {
         return;
     }
 
-    // Everything else: network only
+    // Schedule page: network-first, fall back to cached copy when offline
+    if (url.pathname === '/schedule') {
+        e.respondWith(
+            fetch(e.request)
+                .then(res => {
+                    if (res.ok) caches.open(DATA_CACHE).then(c => c.put(e.request, res.clone()));
+                    return res;
+                })
+                .catch(() => caches.match(e.request))
+        );
+        return;
+    }
+
+    // Order lines: cache-first (prefetched at login, static during a shift)
+    if (url.pathname === '/api/order-lines') {
+        e.respondWith(
+            caches.match(e.request).then(cached => {
+                if (cached) return cached;
+                return fetch(e.request).then(res => {
+                    if (res.ok) caches.open(DATA_CACHE).then(c => c.put(e.request, res.clone()));
+                    return res;
+                });
+            })
+        );
+        return;
+    }
+
+    // Drive times and live ETA: network only, never cache
+    if (url.pathname === '/api/eta' || url.pathname === '/api/stop-to-stop') {
+        e.respondWith(fetch(e.request));
+        return;
+    }
+
+    // Everything else (other pages, other API calls): network only
     e.respondWith(fetch(e.request));
 });
 
