@@ -16,3 +16,5 @@ DEV_MODE         = os.getenv('DEV_MODE', '').lower() in ('1', 'true', 'yes')
 VAPID_PUBLIC_KEY  = os.getenv('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
 VAPID_EMAIL       = os.getenv('VAPID_EMAIL', '')
+
+PDF_UNC_BASE_PATH = os.getenv('PDF_UNC_BASE_PATH', r'\\USA-GR-DC01.corp.usa.com\GrandRapidsDFS\Share-Public\Software\Global\Test Report Export')

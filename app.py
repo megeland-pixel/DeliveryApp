@@ -49,6 +49,17 @@ def init_db():
                 sent_at TEXT NOT NULL
             )
         ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS enroute (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                delivery_date TEXT NOT NULL,
+                driver TEXT NOT NULL,
+                truck TEXT NOT NULL,
+                delivery_order TEXT NOT NULL,
+                enroute_at TEXT NOT NULL,
+                UNIQUE(delivery_date, driver, truck, delivery_order)
+            )
+        ''')
 
 
 def format_time(iso_str):
@@ -95,6 +106,18 @@ def get_delivered_keys(delivery_date, driver):
         with sqlite3.connect(DELIVERY_DB) as conn:
             rows = conn.execute(
                 'SELECT truck, delivery_order FROM deliveries WHERE delivery_date = ? AND driver = ?',
+                (delivery_date, driver)
+            ).fetchall()
+        return {(row[0], row[1]) for row in rows}
+    except Exception:
+        return set()
+
+
+def get_enroute_keys(delivery_date, driver):
+    try:
+        with sqlite3.connect(DELIVERY_DB) as conn:
+            rows = conn.execute(
+                'SELECT truck, delivery_order FROM enroute WHERE delivery_date = ? AND driver = ?',
                 (delivery_date, driver)
             ).fetchall()
         return {(row[0], row[1]) for row in rows}
@@ -370,9 +393,11 @@ def schedule():
         driver_stops = [s for s in all_stops if s.get('driver') == driver and s.get('truck') == truck]
         stops = group_stops_by_order(driver_stops)
         delivered_keys = get_delivered_keys(selected_date, driver)
+        enroute_keys = get_enroute_keys(selected_date, driver)
         last_texts = get_last_texts_for_driver(selected_date, driver)
         for stop in stops:
             stop['delivered'] = (stop['truck'], stop['delivery_order']) in delivered_keys
+            stop['enroute'] = (stop['truck'], stop['delivery_order']) in enroute_keys
             stop['last_text_sent'] = last_texts.get((stop['truck'], stop['delivery_order']), '')
         # Delivered stops go to the bottom
         stops.sort(key=lambda s: s['delivered'])
@@ -546,10 +571,57 @@ def order_lines():
                     line['sub_parts'] = cam_cache[cache_key]
 
         conn.close()
-        return jsonify({'orders': orders})
+        pdf_status = {so_key: _find_pdf_on_share(so_key) is not None for so_key in orders}
+        return jsonify({'orders': orders, 'pdf_status': pdf_status})
     except Exception as e:
         app.logger.error(f'Order lines error: {e}')
         return jsonify({'error': str(e)}), 500
+
+
+def _find_pdf_on_share(so_padded):
+    base = config.PDF_UNC_BASE_PATH
+    direct = os.path.join(base, f'{so_padded}.pdf')
+    if os.path.exists(direct):
+        return direct
+    try:
+        for entry in os.scandir(base):
+            if entry.is_dir():
+                candidate = os.path.join(entry.path, f'{so_padded}.pdf')
+                if os.path.exists(candidate):
+                    return candidate
+    except OSError:
+        pass
+    return None
+
+
+@app.route('/api/prefetch-pdfs', methods=['POST'])
+def prefetch_pdfs():
+    data = request.json or {}
+    driver = data.get('driver', '').strip()
+    truck = data.get('truck', '').strip()
+    delivery_date = data.get('date', date.today().isoformat()).strip()
+    if not driver:
+        return jsonify({'error': 'Missing driver'}), 400
+    try:
+        all_stops = fetch_stops(delivery_date)
+        driver_stops = [s for s in all_stops if s.get('driver') == driver and (not truck or s.get('truck') == truck)]
+        so_nums = list(dict.fromkeys(s['so_num'] for s in driver_stops))
+        results = [{'so': so_padded, 'found': _find_pdf_on_share(so_padded) is not None} for so_padded in so_nums]
+        return jsonify({'results': results})
+    except Exception as e:
+        app.logger.error(f'Prefetch PDFs error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/pdf/<so_num>')
+def serve_pdf(so_num):
+    if not so_num.isdigit():
+        return jsonify({'error': 'Invalid order number'}), 400
+    so_padded = so_num.zfill(7)
+    src = _find_pdf_on_share(so_padded)
+    if not src:
+        return jsonify({'error': 'PDF not available for this order'}), 404
+    return send_from_directory(os.path.dirname(src), os.path.basename(src), mimetype='application/pdf')
 
 
 @app.route('/api/mark-delivered', methods=['POST'])
@@ -572,9 +644,56 @@ def mark_delivered():
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (delivery_date, driver, truck, delivery_order,
                   json.dumps(so_nums), datetime.now().isoformat(), signature, customer))
+            conn.execute(
+                'DELETE FROM enroute WHERE delivery_date=? AND driver=? AND truck=? AND delivery_order=?',
+                (delivery_date, driver, truck, delivery_order)
+            )
         return jsonify({'success': True})
     except Exception as e:
         app.logger.error(f'Mark delivered error: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mark-enroute', methods=['POST'])
+def mark_enroute():
+    data = request.json or {}
+    delivery_date = data.get('date', '').strip()
+    driver = data.get('driver', '').strip()
+    truck = data.get('truck', '').strip()
+    delivery_order = data.get('delivery_order', '').strip()
+    if not all([delivery_date, driver, truck, delivery_order]):
+        return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+    try:
+        with sqlite3.connect(DELIVERY_DB) as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO enroute
+                    (delivery_date, driver, truck, delivery_order, enroute_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (delivery_date, driver, truck, delivery_order, datetime.now().isoformat()))
+        return jsonify({'success': True})
+    except Exception as e:
+        app.logger.error(f'Mark enroute error: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/unmark-enroute', methods=['POST'])
+def unmark_enroute():
+    data = request.json or {}
+    delivery_date = data.get('date', '').strip()
+    driver = data.get('driver', '').strip()
+    truck = data.get('truck', '').strip()
+    delivery_order = data.get('delivery_order', '').strip()
+    if not all([delivery_date, driver, truck, delivery_order]):
+        return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+    try:
+        with sqlite3.connect(DELIVERY_DB) as conn:
+            conn.execute(
+                'DELETE FROM enroute WHERE delivery_date=? AND driver=? AND truck=? AND delivery_order=?',
+                (delivery_date, driver, truck, delivery_order)
+            )
+        return jsonify({'success': True})
+    except Exception as e:
+        app.logger.error(f'Unmark enroute error: {e}')
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -722,6 +841,10 @@ def api_deliveries():
                    FROM deliveries WHERE delivery_date = ?''',
                 (selected_date,)
             ).fetchall()
+            er_rows = conn.execute(
+                'SELECT driver, truck, delivery_order, enroute_at FROM enroute WHERE delivery_date = ?',
+                (selected_date,)
+            ).fetchall()
 
         dl_map = {}
         for row in dl_rows:
@@ -732,6 +855,8 @@ def api_deliveries():
                 'customer': row[5] or '',
                 'has_signature': bool(row[6]),
             }
+
+        er_map = {(row[0], row[1], row[2]): format_time(row[3]) for row in er_rows}
 
         stops_out = []
         for stop in grouped:
@@ -747,6 +872,8 @@ def api_deliveries():
                 'delivered':      dl is not None,
                 'delivered_at':   dl['delivered_at'] if dl else None,
                 'has_signature':  dl['has_signature'] if dl else False,
+                'enroute':        key in er_map,
+                'enroute_at':     er_map.get(key),
             })
 
         return jsonify({'date': selected_date, 'stops': stops_out})
@@ -818,6 +945,10 @@ def admin():
                    FROM deliveries WHERE delivery_date = ?''',
                 (selected_date,)
             ).fetchall()
+            er_rows = conn.execute(
+                'SELECT driver, truck, delivery_order FROM enroute WHERE delivery_date = ?',
+                (selected_date,)
+            ).fetchall()
 
         dl_map = {}
         for row in dl_rows:
@@ -828,12 +959,15 @@ def admin():
                 'has_signature': bool(row[5]),
             }
 
+        er_set = {(row[0], row[1], row[2]) for row in er_rows}
+
         for stop in grouped:
             key = (stop['driver'], stop['truck'], stop['delivery_order'])
             dl = dl_map.get(key)
             stop['delivered']     = dl is not None
             stop['delivered_at']  = dl['delivered_at'] if dl else ''
             stop['has_signature'] = dl['has_signature'] if dl else False
+            stop['enroute']       = key in er_set
 
         by_driver = {}
         for stop in grouped:
@@ -841,6 +975,7 @@ def admin():
 
         total           = len(grouped)
         delivered_count = sum(1 for s in grouped if s['delivered'])
+        enroute_count   = sum(1 for s in grouped if s['enroute'])
         error = None
     except Exception as e:
         app.logger.error(f'admin error: {e}')
@@ -853,6 +988,7 @@ def admin():
                            by_driver=by_driver,
                            total=total,
                            delivered_count=delivered_count,
+                           enroute_count=enroute_count,
                            error=error)
 
 

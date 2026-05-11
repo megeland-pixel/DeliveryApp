@@ -50,7 +50,7 @@
         {% else %}
             {% set ns = namespace(next_found=false) %}
             {% for stop in stops %}
-            <div class="stop-card{% if not stop.delivered and not ns.next_found %} stop-card-next{% endif %}{% if stop.delivered %} stop-card-delivered{% else %} stop-card-clickable{% endif %}"
+            <div class="stop-card{% if stop.enroute %} stop-card-enroute{% elif not stop.delivered and not ns.next_found %} stop-card-next{% endif %}{% if stop.delivered %} stop-card-delivered{% else %} stop-card-clickable{% endif %}"
                  data-driver="{{ driver }}"
                  data-date="{{ selected_date }}"
                  data-truck="{{ stop.truck }}"
@@ -102,6 +102,8 @@
                 </div>
                 {% if stop.delivered %}
                 <div class="stop-delivered-badge">&#10003; Delivered</div>
+                {% elif stop.enroute %}
+                <div class="stop-enroute-badge">&#9654; Enroute</div>
                 {% else %}
                 <div class="stop-chevron">&#8250;</div>
                 {% endif %}
@@ -436,9 +438,23 @@
             setTimeout(() => { location.href = href; }, 80);
         }
 
-        function goNavigate(card) {
+        async function goNavigate(card) {
             document.getElementById('loading-overlay').style.display = 'flex';
             const d = card.dataset;
+            if (!d.delivered) {
+                try {
+                    await fetch('/api/mark-enroute', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            date:           d.date,
+                            driver:         d.driver,
+                            truck:          d.truck,
+                            delivery_order: d.deliveryOrder,
+                        }),
+                    });
+                } catch {}
+            }
             const params = new URLSearchParams({
                 customer:       d.customer || '',
                 street:         d.addressStreet || '',
@@ -456,9 +472,7 @@
                 delivered:      d.delivered || '',
                 back:           window.location.href,
             });
-            setTimeout(() => {
-                location.href = '/navigate?' + params.toString();
-            }, 80);
+            location.href = '/navigate?' + params.toString();
         }
 
         // ── Stop-to-stop drive times ───────────────────────────

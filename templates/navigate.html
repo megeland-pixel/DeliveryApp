@@ -388,6 +388,13 @@
             border-radius: 4px; font-weight: 500; margin-top: 4px; white-space: pre-wrap;
         }
         .order-table-wrap { margin-top: 16px; }
+        .pdf-link {
+            display: inline-block; margin-top: 8px; margin-bottom: 4px;
+            font-size: 13px; font-weight: 600; color: #1B4F8A;
+            text-decoration: none; padding: 4px 10px;
+            border: 1px solid #bfdbfe; border-radius: 4px; background: #eff6ff;
+        }
+        .pdf-link:active { background: #dbeafe; }
         .order-table-header {
             font-size: 13px; font-weight: 700; text-transform: uppercase;
             letter-spacing: 0.06em; color: #1B4F8A; background: #eff6ff;
@@ -629,6 +636,11 @@
         Last text: <span id="last-text-time">{{ last_text_sent }}</span>
     </div>
     {% endif %}
+    <div style="padding:4px 16px 10px; text-align:center; background:#fff; flex-shrink:0;">
+        <button id="back-to-pending-btn" onclick="backToPending()" style="background:none; border:none; color:#9ca3af; font-size:12px; cursor:pointer; padding:4px 8px; text-decoration:underline; touch-action:manipulation;">
+            Reset to Pending
+        </button>
+    </div>
     {% endif %}
 
 </div>
@@ -769,6 +781,25 @@
         e.preventDefault();
         document.getElementById('loading-overlay').style.display = 'flex';
         setTimeout(() => { location.href = href; }, 80);
+    }
+
+    async function backToPending() {
+        const btn = document.getElementById('back-to-pending-btn');
+        btn.disabled = true;
+        btn.textContent = 'Resetting…';
+        try {
+            await fetch('/api/unmark-enroute', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    date:           DATE,
+                    driver:         DRIVER,
+                    truck:          TRUCK,
+                    delivery_order: DELIVERY_ORDER,
+                }),
+            });
+        } catch {}
+        window.location.href = BACK_URL;
     }
 
     const COMPANY        = {{ company | tojson }};
@@ -933,7 +964,11 @@
             } else {
                 html += `<tr><td colspan="3" class="lines-empty">No lines found</td></tr>`;
             }
-            html += `</tbody></table></div>`;
+            html += `</tbody></table>`;
+            if (data.pdf_status && data.pdf_status[String(soNum)]) {
+                html += `<a href="/pdf/${soNum}" target="_blank" class="pdf-link">&#128196; View PDF</a>`;
+            }
+            html += `</div>`;
         });
         return html;
     }

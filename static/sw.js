@@ -1,4 +1,5 @@
-const CACHE = 'delivery-v7';
+const CACHE = 'delivery-v8';
+const PDF_CACHE = 'pdf-v1';
 const PRECACHE = [
     '/static/css/style.css',
     '/static/images/usa_LOGO_Transparent.png',
@@ -16,7 +17,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
     e.waitUntil(
         caches.keys().then(keys =>
-            Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+            Promise.all(keys.filter(k => k !== CACHE && k !== PDF_CACHE).map(k => caches.delete(k)))
         )
     );
     self.clients.claim();
@@ -28,6 +29,23 @@ self.addEventListener('fetch', e => {
     // Always go to the network for HTML pages and API calls — never serve stale
     if (e.request.mode === 'navigate' || url.pathname.startsWith('/api/')) {
         e.respondWith(fetch(e.request));
+        return;
+    }
+
+    // Cache-first for PDFs — stored in a dedicated cache so they survive SW updates
+    if (url.pathname.startsWith('/pdf/')) {
+        e.respondWith(
+            caches.match(e.request).then(cached => {
+                if (cached) return cached;
+                return fetch(e.request).then(res => {
+                    if (res.ok) {
+                        const clone = res.clone();
+                        caches.open(PDF_CACHE).then(c => c.put(e.request, clone));
+                    }
+                    return res;
+                });
+            })
+        );
         return;
     }
 

@@ -338,6 +338,17 @@ body {
     margin-top: 8px;
 }
 
+.pdf-status {
+    min-height: 20px;
+    font-size: 13px;
+    text-align: center;
+    margin-top: 10px;
+    color: #6b7280;
+}
+.pdf-status-loading { color: #1B4F8A; }
+.pdf-status-done    { color: #16a34a; }
+.pdf-status-error   { color: #dc2626; }
+
 .btn-icon {
     font-size: 18px;
     line-height: 1;
@@ -474,6 +485,20 @@ body {
     box-shadow: var(--shadow);
 }
 
+.stop-card-enroute {
+    background: #fffbeb;
+    border-left: 4px solid #f59e0b;
+}
+.stop-card-enroute:hover {
+    background: #fef3c7;
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.15);
+    transform: translateY(-2px);
+}
+.stop-card-enroute:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow);
+}
+
 .stop-number {
     width: 54px;
     height: 54px;
@@ -543,6 +568,7 @@ body {
 .badge-phone   { background: #f3f4f6; color: #374151; font-family: monospace; }
 .badge-called  { background: #d1fae5; color: #065f46; }
 .badge-texted  { background: #e0e7ff; color: #3730a3; }
+.badge-enroute { background: #fef3c7; color: #92400e; }
 
 .stop-notes {
     font-size: 14px;
@@ -573,6 +599,18 @@ body {
 .stop-delivered-badge {
     background: #d1fae5;
     color: #065f46;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    align-self: center;
+}
+
+.stop-enroute-badge {
+    background: #fef3c7;
+    color: #92400e;
     font-weight: 600;
     font-size: 14px;
     padding: 8px 12px;

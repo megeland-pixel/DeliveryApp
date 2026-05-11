@@ -57,21 +57,56 @@
             <button type="submit" class="btn btn-primary btn-large" id="submit-btn" disabled>
                 Start Delivery
             </button>
+            <div id="pdf-status" class="pdf-status"></div>
         </form>
     </div>
 
     <script>
-        const TRUCK_DATA   = {{ truck_data | tojson }};
-        const driverSelect = document.getElementById('driver');
-        const truckGroup  = document.getElementById('truck-group');
-        const truckSelect = document.getElementById('truck');
-        const submitBtn   = document.getElementById('submit-btn');
+        const TRUCK_DATA    = {{ truck_data | tojson }};
+        const SELECTED_DATE = {{ selected_date | tojson }};
+        const driverSelect  = document.getElementById('driver');
+        const truckGroup    = document.getElementById('truck-group');
+        const truckSelect   = document.getElementById('truck');
+        const submitBtn     = document.getElementById('submit-btn');
+        const pdfStatus     = document.getElementById('pdf-status');
+
+        async function prefetchPdfs(driver, truck) {
+            pdfStatus.textContent = 'Downloading PDFs…';
+            pdfStatus.className = 'pdf-status pdf-status-loading';
+            try {
+                const r = await fetch('/api/prefetch-pdfs', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({driver, truck, date: SELECTED_DATE})
+                });
+                const data = await r.json();
+                if (data.error) {
+                    pdfStatus.textContent = 'PDF download failed.';
+                    pdfStatus.className = 'pdf-status pdf-status-error';
+                    return;
+                }
+                const available = data.results.filter(r => r.found);
+                const total = data.results.length;
+                // Fetch each available PDF so the service worker caches it on this device
+                await Promise.all(available.map(r => fetch(`/pdf/${r.so}`).catch(() => {})));
+                const found = available.length;
+                pdfStatus.textContent = found === total
+                    ? `${found} PDF${found !== 1 ? 's' : ''} ready.`
+                    : `${found} of ${total} PDF${total !== 1 ? 's' : ''} found.`;
+                pdfStatus.className = 'pdf-status pdf-status-done';
+            } catch {
+                pdfStatus.textContent = 'PDF download failed.';
+                pdfStatus.className = 'pdf-status pdf-status-error';
+            }
+        }
 
         function resetTrucks() {
             truckGroup.style.display = 'none';
             truckSelect.innerHTML = '<option value="">-- Select Truck --</option>';
             truckSelect.disabled = true;
             submitBtn.disabled = true;
+            pdfStatus.textContent = '';
+            pdfStatus.className = 'pdf-status';
         }
 
         function populateTrucks(driver) {
@@ -85,6 +120,7 @@
                 truckSelect.disabled = false;
                 truckGroup.style.display = 'none';
                 submitBtn.disabled = false;
+                prefetchPdfs(driver, trucks[0].truck);
             } else if (trucks.length > 1) {
                 const defaultTruck = trucks.find(t => !t.all_delivered) || trucks[0];
                 truckSelect.innerHTML = '';
@@ -102,6 +138,7 @@
                 truckSelect.disabled = false;
                 truckGroup.style.display = 'block';
                 submitBtn.disabled = false;
+                prefetchPdfs(driver, defaultTruck.truck);
             } else {
                 resetTrucks();
             }
@@ -117,6 +154,7 @@
 
         truckSelect.addEventListener('change', () => {
             submitBtn.disabled = !truckSelect.value;
+            if (truckSelect.value) prefetchPdfs(driverSelect.value, truckSelect.value);
         });
 
         document.getElementById('main-form').addEventListener('submit', e => {

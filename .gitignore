@@ -3,3 +3,4 @@ deliveries.db
 __pycache__/
 *.pyc
 *.pyo
+pdf_cache/
