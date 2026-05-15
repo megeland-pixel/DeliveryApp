@@ -423,11 +423,14 @@ def geocode_address(address):
     if address in _geocode_cache:
         return _geocode_cache[address]
 
-    # Build structured query from "street, city, state, zip" format for better accuracy
+    # Build structured query from "street[, unit], city, state, zip" format.
+    # Always treat the last 3 parts as city/state/zip so addresses with a unit
+    # line (e.g. "123 Main St, 3RD FLR, Grand Rapids, MI, 49503") parse correctly.
     parts = [p.strip() for p in address.split(',')]
     base = {'format': 'json', 'limit': 1, 'countrycodes': 'us'}
     if len(parts) >= 4:
-        street, city, state, zipcode = parts[0], parts[1], parts[2], parts[3]
+        city, state, zipcode = parts[-3], parts[-2], parts[-1]
+        street = parts[0]
         # Only use street if it has a house number — a bare street name (no leading digit)
         # can match a same-named place in a different state and produce a wrong result.
         if street and street[0].isdigit():
@@ -447,12 +450,36 @@ def geocode_address(address):
     )
     results = resp.json()
 
-    # Fall back to city+zip if the street-level search returns nothing
+    # Fallback 1: city+state+zip (drop the street)
     if not results and 'street' in params:
         fallback = {**base, 'city': params['city'], 'state': params['state'], 'postalcode': params['postalcode']}
         resp = requests.get(
             'https://nominatim.openstreetmap.org/search',
             params=fallback,
+            headers={'User-Agent': 'UniversalSpiralAirDeliveryApp/1.0'},
+            timeout=5
+        )
+        results = resp.json()
+
+    # Fallback 2: street+state+zip (handles misspelled city names)
+    if not results and 'street' in params and 'postalcode' in params:
+        time.sleep(1.1)
+        fallback2 = {**base, 'street': params['street'], 'state': params['state'], 'postalcode': params['postalcode']}
+        resp = requests.get(
+            'https://nominatim.openstreetmap.org/search',
+            params=fallback2,
+            headers={'User-Agent': 'UniversalSpiralAirDeliveryApp/1.0'},
+            timeout=5
+        )
+        results = resp.json()
+
+    # Fallback 3: zip code only (last resort)
+    if not results and 'postalcode' in params:
+        time.sleep(1.1)
+        fallback3 = {**base, 'postalcode': params['postalcode']}
+        resp = requests.get(
+            'https://nominatim.openstreetmap.org/search',
+            params=fallback3,
             headers={'User-Agent': 'UniversalSpiralAirDeliveryApp/1.0'},
             timeout=5
         )
