@@ -531,10 +531,10 @@
                             ? (m < 1 ? '< 1 min back to shop' : `~${m} min back to shop`)
                             : (m < 1 ? '< 1 min drive' : `~${m} min drive`);
                     } else {
-                        divider.style.display = 'none';
+                        textEl.textContent = '—';
                     }
                 } catch {
-                    divider.style.display = 'none';
+                    textEl.textContent = '—';
                 }
 
                 await new Promise(r => setTimeout(r, 350));

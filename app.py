@@ -9,6 +9,7 @@ import logging
 import sqlite3
 import json
 import os
+import time
 import requests
 import config
 
@@ -471,7 +472,10 @@ def stop_to_stop():
     if not origin or not dest:
         return jsonify({'error': 'Missing origin or dest'}), 400
     try:
+        origin_was_cached = origin in _geocode_cache
         origin_coords = geocode_address(origin)
+        if not origin_was_cached and dest not in _geocode_cache:
+            time.sleep(1.1)
         dest_coords = geocode_address(dest)
         if not origin_coords or not dest_coords:
             return jsonify({'error': 'Could not geocode address'}), 400
@@ -480,7 +484,7 @@ def stop_to_stop():
         osrm = requests.get(
             f'https://router.project-osrm.org/route/v1/driving/{olng},{olat};{dlng},{dlat}',
             params={'overview': 'false'},
-            timeout=5
+            timeout=10
         )
         data = osrm.json()
         if data.get('code') != 'Ok':
