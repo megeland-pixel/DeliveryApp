@@ -183,6 +183,13 @@
             return Math.ceil(Math.max(n, 1) / 5) * 5;
         }
 
+        function fmtEta(m) {
+            if (m < 1) return '< 1 min';
+            if (m < 60) return `~${m} min`;
+            const h = Math.floor(m / 60), mins = m % 60;
+            return mins === 0 ? `~${h} hr` : `~${h} hr ${mins} min`;
+        }
+
         function etaNotifKey(truck, deliveryOrder) {
             return `eta_notif|${DELIVERY_DATE}|${DRIVER}|${truck}|${deliveryOrder}`;
         }
@@ -218,7 +225,7 @@
                 if (data.minutes !== undefined) {
                     const m = data.minutes;
                     lastKnownEtaMinutes = m;
-                    etaBannerTime.textContent = m < 1 ? 'Less than 1 min' : `~${m} min`;
+                    etaBannerTime.textContent = fmtEta(m);
                     checkProximityAlert(m);
                 } else {
                     etaBannerTime.textContent = 'Unable to calculate';
@@ -267,9 +274,9 @@
             currentProximityMinutes = roundUpToFive(minutes);
             document.getElementById('prox-customer').textContent = currentProximityStop.customer || 'Next Stop';
             document.getElementById('prox-message').textContent =
-                `~${currentProximityMinutes} minute${currentProximityMinutes === 1 ? '' : 's'} away — would you like to notify them?`;
+                `${fmtEta(currentProximityMinutes)} away — would you like to notify them?`;
             const sendBtn = document.getElementById('prox-send-btn');
-            sendBtn.textContent = `\u{1F4AC} Text Customer (ETA ${currentProximityMinutes} min)`;
+            sendBtn.textContent = `\u{1F4AC} Text Customer (ETA ${fmtEta(currentProximityMinutes)})`;
             sendBtn.disabled = false;
             document.getElementById('prox-send-status').textContent = '';
             document.getElementById('proximity-overlay').style.display = 'flex';
@@ -528,8 +535,8 @@
                     if (data.minutes !== undefined) {
                         const m = data.minutes;
                         textEl.textContent = destAddress
-                            ? (m < 1 ? '< 1 min back to shop' : `~${m} min back to shop`)
-                            : (m < 1 ? '< 1 min drive' : `~${m} min drive`);
+                            ? (m < 1 ? '< 1 min back to shop' : `${fmtEta(m)} back to shop`)
+                            : (m < 1 ? '< 1 min drive' : `${fmtEta(m)} drive`);
                     } else {
                         textEl.textContent = '—';
                     }

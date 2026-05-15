@@ -1080,6 +1080,13 @@
         return Math.ceil(Math.max(n, 1) / 5) * 5;
     }
 
+    function fmtEta(m) {
+        if (m < 1) return '< 1 min';
+        if (m < 60) return `~${m} min`;
+        const h = Math.floor(m / 60), mins = m % 60;
+        return mins === 0 ? `~${h} hr` : `~${h} hr ${mins} min`;
+    }
+
     function etaNotifKey() {
         return `eta_notif|${DATE}|${DRIVER}|${TRUCK}|${DELIVERY_ORDER}`;
     }
@@ -1120,10 +1127,10 @@
 
     function showEtaAlert(minutes) {
         currentAlertMinutes = roundUpToFive(minutes);
-        document.getElementById('eta-alert-mins').textContent = `~${currentAlertMinutes} min`;
+        document.getElementById('eta-alert-mins').textContent = fmtEta(currentAlertMinutes);
         document.getElementById('eta-alert-customer').textContent = CUSTOMER;
         const sendBtn = document.getElementById('eta-send-btn');
-        sendBtn.textContent = `Send Text (ETA ${currentAlertMinutes} min)`;
+        sendBtn.textContent = `Send Text (ETA ${fmtEta(currentAlertMinutes)})`;
         sendBtn.disabled = false;
         document.getElementById('eta-alert-status').textContent = '';
         document.getElementById('eta-alert-status').className = 'send-status';
@@ -1199,8 +1206,8 @@
                     subscription: pushSubscription.toJSON(),
                     payload: {
                         title: 'Delivery ETA Alert',
-                        body: `You’re ~${mins} min from ${CUSTOMER}`,
-                        send_label: `Send Text (ETA ${mins} min)`,
+                        body: `You’re ${fmtEta(mins)} from ${CUSTOMER}`,
+                        send_label: `Send Text (ETA ${fmtEta(mins)})`,
                         sms_data: {
                             phone: PHONE, message,
                             delivery_date: DATE, driver: DRIVER,
@@ -1238,7 +1245,7 @@
                 const data = await res.json();
                 if (data.minutes !== undefined) {
                     const m = data.minutes;
-                    etaValueEl.textContent = m < 1 ? '< 1 min' : `~${m} min`;
+                    etaValueEl.textContent = fmtEta(m);
                     etaValueEl.style.color = m <= 5 ? '#dc2626' : m <= 15 ? '#b45309' : '#1e40af';
 
                     if (m <= 15 && PHONE) {
